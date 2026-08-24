@@ -12,12 +12,12 @@ Uso:
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-from envutil import cargar_env, model_imagen_por_defecto, voz_por_defecto, whisper_por_defecto
+from envutil import (apikey_proveedor, cargar_env, model_imagen_por_defecto,
+                     proveedor_imagen_por_defecto, voz_por_defecto, whisper_por_defecto)
 
 cargar_env()
 
@@ -36,7 +36,8 @@ SCRIPT = {
 
 
 def _ejecutar(paso: str, guion: Path, voz: str, modelo: str, formatos: str,
-              whisper_model: str, referencia: str | None = None) -> int:
+              whisper_model: str, referencia: str | None = None,
+              proveedor: str | None = None, estilo: str | None = None) -> int:
     script = RAIZ / SCRIPT[paso]
     cmd = [sys.executable, str(script)]
     # Rutas por defecto del workspace (consistentes con config/settings.example.json).
@@ -49,8 +50,12 @@ def _ejecutar(paso: str, guion: Path, voz: str, modelo: str, formatos: str,
                 "--outdir", "workspace/transcripcion", "--model", whisper_model]
     elif paso == "imagenes":
         cmd += ["--outdir", "workspace/imagenes", "--model", modelo]
+        if proveedor:
+            cmd += ["--proveedor", proveedor]
         if referencia:
             cmd += ["--referencia", referencia]
+        if estilo:
+            cmd += ["--estilo", estilo]
     elif paso == "ensamblado":
         cmd += ["--imagedir", "workspace/imagenes",
                 "--audio", "workspace/audio/narracion.mp3",
@@ -69,7 +74,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="Etapas a ejecutar, separadas por coma, o 'all' (cadena completa).")
     ap.add_argument("--voz", default=voz_por_defecto(), help="Voz de edge-tts.")
     ap.add_argument("--model", default=model_imagen_por_defecto(),
-                    help="Modelo de imagen de Gemini.")
+                    help="Modelo de imagen del proveedor activo (Gemini o Qwen).")
+    ap.add_argument("--proveedor", default=None, choices=["gemini", "qwen"],
+                    help="Proveedor de imágenes para el paso 'imagenes'. " 
+                         "Por defecto el de IMAGEN_PROVEEDOR o el detectado.")
+    ap.add_argument("--estilo", default=None,
+                    help="Ajuste global de estilo/feedback para las imágenes del paso "
+                         "'imagenes' (se añade a todos los prompts).")
     ap.add_argument("--whisper-model", default=whisper_por_defecto(),
                     help="Modelo whisper para la transcripción (tiny/base/small/...).")
     ap.add_argument("--formato", default=None, choices=["vertical", "horizontal"],
@@ -93,14 +104,16 @@ def main(argv: list[str] | None = None) -> int:
               f"{', '.join(sorted(PASOS))}.", file=sys.stderr)
         return 2
 
+    proveedor = (args.proveedor or proveedor_imagen_por_defecto()).strip().lower()
     for paso in pasos:
-        # Las imágenes necesitan la API key de Gemini; avisamos sin abortar el resto.
-        if paso == "imagenes" and not (os.environ.get("GEMINI_API_KEY")):
-            print(f"[pipeline] Aviso: GEMINI_API_KEY no definida; se omite el paso 'imagenes'.",
-                  file=sys.stderr)
+        # Las imágenes necesitan la API key del proveedor; avisamos sin abortar el resto.
+        if paso == "imagenes" and not apikey_proveedor(proveedor):
+            print(f"[pipeline] Aviso: no hay API key para el proveedor '{proveedor}' "
+                  f"({('QWEN_API_KEY' if proveedor == 'qwen' else 'GEMINI_API_KEY')}); "
+                  f"se omite el paso 'imagenes'.", file=sys.stderr)
             continue
-        if _ejecutar(paso, guion, args.voz, args.model, args.formato,
-                     args.whisper_model, args.referencia) != 0:
+        if _ejecutar(paso, guion, args.voz, args.model, args.formato, args.whisper_model,
+                     args.referencia, proveedor, args.estilo) != 0:
             print(f"[pipeline] El paso '{paso}' falló. Abortando.", file=sys.stderr)
             return 1
 

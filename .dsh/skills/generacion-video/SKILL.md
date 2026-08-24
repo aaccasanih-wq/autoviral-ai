@@ -1,6 +1,6 @@
 ---
 name: generacion-video
-description: Ejecuta el pipeline técnico completo de producción de un video corto a partir de un guion ya confirmado: narración (edge-tts), transcripción a .srt (faster-whisper), imágenes por escena (Gemini Nano Banana 2 vía MCP) y ensamblaje del video final (Kinocut/FFmpeg). Úsala solo en la Fase 2; nunca crea ideas creativas nuevas.
+description: Ejecuta el pipeline técnico completo de producción de un video corto a partir de un guion ya confirmado: narración (edge-tts), transcripción a .srt (faster-whisper), imágenes por escena con proveedor intercambiable (Gemini Nano Banana 2 o Alibaba Qwen) y ensamblaje del video final (Kinocut/FFmpeg). Tras generar las imágenes, pide al usuario que las apruebe y, si no está conforme, regenera con su feedback. Úsala solo en la Fase 2; nunca crea ideas creativas nuevas.
 whenToUse: El usuario ya tiene un guion confirmado (de /ideacion-video o pegado) y quiere generarlo, o quiere aplicar ajustes post-producción a un video ya generado.
 ---
 
@@ -88,48 +88,81 @@ python scripts/transcribir.py \
 Produce `narracion.srt` (subtítulos con timestamps precisos) y `narracion.json` (timing por
 frase). Esto es lo que se quema sobre el video y lo que da la duración real de cada escena.
 
-### Paso 4 — Generar imágenes por escena (Gemini Nano Banana 2)
+### Paso 4 — Generar imágenes por escena (proveedor intercambiable)
 
-Hay **dos vías**; usa la que tengas disponible:
+El paso `generar_imagenes.py` soporta **dos proveedores**. Elige el activo con `--proveedor`
+(o la variable `IMAGEN_PROVEEDOR` del `.env`; por defecto `gemini`). Cada uno usa su propia
+API key y modelo por defecto:
 
-**A) Vía MCP (recomendada).** Con el servidor `nano-banana-2` conectado, llama a la herramienta
-`generate_image` por cada escena con su `prompt_imagen`, `aspectRatio` según el formato
-(`"9:16"` vertical, `"16:9"` horizontal) y `returnInlineImage: false`. Guarda cada resultado en
-`workspace/imagenes/` con el nombre **`MM_SS_descripcion.png`**, donde `MM_SS` es el
-`inicio_segundos` de la escena formateado como `00:05` → `00_05`. Ej.: `00_05_gancho.png`.
+| Proveedor | `--proveedor` | API key | Modelo por defecto | `--model` alternativo |
+|---|---|---|---|---|
+| Google (Nano Banana) | `gemini` | `GEMINI_API_KEY` | `gemini-3.1-flash-image-preview` | `gemini-2.5-flash-image` |
+| Alibaba Cloud | `qwen` | `QWEN_API_KEY` | `qwen-image-3.0` | `qwen-image-3.0-pro` |
 
-**B) Vía script (CLI, requiere `GEMINI_API_KEY`).**
+El host de Qwen se toma de `QWEN_API_HOST` (p. ej. `ws-emxfi567101fw62r.…maas.aliyuncs.com`).
+Cualquier clave/modelo se puede forzar con `--apikey` / `--model`.
 
+**Gemini:**
 ```bash
 GEMINI_API_KEY=... python scripts/generar_imagenes.py \
-  --guion workspace/guion.json \
-  --outdir workspace/imagenes \
-  --model gemini-3.1-flash-image-preview
+  --guion workspace/guion.json --outdir workspace/imagenes \
+  --proveedor gemini --model gemini-3.1-flash-image-preview
+```
+
+**Qwen (Alibaba DashScope):**
+```bash
+QWEN_API_KEY=... QWEN_API_HOST=ws-emxfi567101fw62r.ap-southeast-1.maas.aliyuncs.com \
+  python scripts/generar_imagenes.py \
+  --guion workspace/guion.json --outdir workspace/imagenes \
+  --proveedor qwen --model qwen-image-3.0
 ```
 
 Genera automáticamente `workspace/imagenes/MM_SS_descripcion.png` para cada escena.
 
 **Estilo consistente (imagen de referencia).** Si el guion tiene `parametros.imagen_referencia`
 (o quieres fijarlo con `--referencia`), el estilo animado de esa imagen se usa en **todas** las
-escenas: el script la envía como input a Gemini junto con cada `prompt_imagen`. Añade el flag a la
-vía CLI:
+escenas: el script la envía como input al modelo junto con cada `prompt_imagen` (ambos proveedores
+lo soportan).
 
 ```bash
-GEMINI_API_KEY=... python scripts/generar_imagenes.py \
-  --guion workspace/guion.json \
-  --outdir workspace/imagenes \
-  --model gemini-2.5-flash-image \
-  --referencia workspace/referencia.png
+# (gemini) ... --model gemini-2.5-flash-image --referencia workspace/referencia.png
+# (qwen)   ... --model qwen-image-3.0 --referencia workspace/referencia.png
 ```
-
-En la vía MCP, si la herramienta de generación admite un input de imagen, incluye la misma
-referencia con el `prompt_imagen` de cada escena para anclar el estilo; si no lo admite, usa la vía
-CLI con `--referencia` (o deja la ruta en `parametros.imagen_referencia` del guion).
 
 **Regla de nombrado:** `MM_SS` (dos dígitos de minutos, dos de segundos) + `_` + una
 slug corta del prompt. Es lo que el ensamblador usa para sincronizar cada imagen con su escena.
-Si una imagen falla, reintenta hasta 1 vez con un prompt ligeramente simplificado y luego continúa
-con la siguiente; al final reporta las escenas sin imagen.
+Si una imagen falla, anótala y al final reporta las escenas sin imagen (no reinventes: el script
+deja el detalle en `workspace/imagenes/reporte.json`).
+
+### Paso 4.5 — Aprobar las imágenes con el usuario (obligatorio)
+
+Después de generar las imágenes, **no ensambles todavía**. El script escribe además un **contact
+sheet** que reúne todas las escenas en una sola imagen:
+
+```bash
+python scripts/generar_imagenes.py --outdir workspace/imagenes --contact-sheet
+# -> workspace/revision/contact_sheet.png
+```
+
+1. **Muestra esa imagen al usuario** (`workspace/revision/contact_sheet.png`) y **pregúntale si las
+   imágenes están bien** (estilo, colores, animación de personajes, fondos, consistencia).
+2. **Si responde que sí** → continúa con el Paso 5 (ensamblado).
+3. **Si responde que no** → **pregúntale su feedback concreto** y **regenera** lo que pida:
+   - Cambio global de estilo/colores/fondos → regenera **todas** con su feedback aplicado a cada
+     prompt:
+     ```bash
+     python scripts/generar_imagenes.py --guion workspace/guion.json \
+       --outdir workspace/imagenes --proveedor <gemini|qwen> --overwrite \
+       --estilo "<feedback del usuario>"
+     ```
+   - Solo una escena → regenera esa con `--solo escena-XX --overwrite`.
+   - **Actualiza también el guion** (`prompt_imagen`) si el usuario pide cambiar una escena concreta,
+     para que la descripción coincida con lo que pidió.
+4. Tras regenerar, **vuelve a generar el contact sheet** y **repregunta** al usuario. **Itera hasta
+   que diga que sí**, y recién entonces continúa con el Paso 5.
+
+> `--estilo` añade el feedback del usuario (ej. "más colores cálidos, menos texto en pantalla") a
+> todos los prompts sin tocar el guion. Usa `--solo <id>` para regenerar una única escena.
 
 ### Paso 5 — Ensamblar el video final (Kinocut MCP / FFmpeg)
 
@@ -174,5 +207,6 @@ contenedor por defecto es MP4 (H.264 + AAC).
 - `workspace/audio/narracion.mp3` existe.
 - `workspace/transcripcion/narracion.srt` existe y sus timestamps están ordenados.
 - `workspace/imagenes/` tiene una imagen por escena con nombre `MM_SS_*.png`.
+- **El usuario aprobó las imágenes** (Paso 4.5) — no continúes al ensamblado sin esa aprobación.
 - `workspace/video/final.mp4` existe, con la duración aproximada a `duracion_segundos`.
 - El usuario dio su aprobación final (si no, no cierres — ofrece ajustes).

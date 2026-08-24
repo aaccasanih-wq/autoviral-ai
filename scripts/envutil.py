@@ -1,7 +1,9 @@
 """Carga el archivo ``.env`` de la raíz del proyecto (si existe).
 
-Permite que los scripts lean `GEMINI_API_KEY`, `NANO_BANANA_MODEL`, `EDGE_TTS_VOZ` y
-`WHISPER_MODEL` sin depender de variables de entorno exportadas manualmente.
+Permite que los scripts lean credenciales y configuración sin depender de variables de entorno
+exportadas manualmente: `GEMINI_API_KEY`/`NANO_BANANA_MODEL` (imágenes Gemini), `QWEN_API_KEY`/
+`QWEN_IMAGE_MODEL`/`QWEN_API_HOST` (imágenes Alibaba Cloud Qwen), `IMAGEN_PROVEEDOR` (proveedor
+activo), `EDGE_TTS_VOZ` y `WHISPER_MODEL`.
 """
 
 from __future__ import annotations
@@ -32,6 +34,46 @@ def env_o(key: str, default: str | None = None) -> str | None:
 def model_imagen_por_defecto() -> str:
     return env_o("NANO_BANANA_MODEL", "gemini-3.1-flash-image-preview") or \
         "gemini-3.1-flash-image-preview"
+
+
+PROVEEDORES_IMAGEN = ("gemini", "qwen")
+DEFAULT_PROVEEDOR = "gemini"
+
+
+def proveedor_imagen_por_defecto() -> str:
+    """Proveedor de imágenes activo: ``gemini`` o ``qwen``.
+
+    Se lee de ``IMAGEN_PROVEEDOR`` (o ``QWEN_API_KEY`` definida como pista de que el usuario
+    quiere Qwen); por defecto ``gemini``.
+    """
+    val = (env_o("IMAGEN_PROVEEDOR", "") or "").strip().lower()
+    if val:
+        return val if val in PROVEEDORES_IMAGEN else DEFAULT_PROVEEDOR
+    # Pista: si hay key de Qwen y no hay key de Gemini, elegimos Qwen.
+    if env_o("QWEN_API_KEY") or env_o("DASHSCOPE_API_KEY"):
+        if not env_o("GEMINI_API_KEY"):
+            return "qwen"
+    return DEFAULT_PROVEEDOR
+
+
+def apikey_proveedor(proveedor: str) -> str | None:
+    """API key del proveedor de imágenes indicado (``gemini`` o ``qwen``)."""
+    if proveedor == "qwen":
+        return env_o("QWEN_API_KEY") or env_o("DASHSCOPE_API_KEY")
+    return env_o("GEMINI_API_KEY")
+
+
+def qwen_modelo_por_defecto() -> str:
+    return env_o("QWEN_IMAGE_MODEL", "qwen-image-3.0") or "qwen-image-3.0"
+
+
+def qwen_api_host() -> str:
+    return env_o("QWEN_API_HOST") or env_o("DASHSCOPE_API_HOST") or "dashscope.aliyuncs.com"
+
+
+def qwen_generacion_url() -> str:
+    """Endpoint DashScope multimodal-generation para Qwen image models."""
+    return f"https://{qwen_api_host()}/api/v1/services/aigc/multimodal-generation/generation"
 
 
 def voz_por_defecto() -> str:

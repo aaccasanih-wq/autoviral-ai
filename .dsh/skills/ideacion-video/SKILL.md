@@ -63,6 +63,10 @@ Antes de redactar, confirma y deja constancia de:
 | Público objetivo | `parametros.publico` | p. ej. `adultos 25-40` |
 | Imagen de referencia (opcional) | `parametros.imagen_referencia` | ruta a un `.png/.jpg/...` cuyo estilo animado se replicará |
 
+> El **proveedor de imágenes** (Gemini o Alibaba Qwen) **no** se guarda en el guion: se elige al
+> producir, en la Fase 2, vía `IMAGEN_PROVEEDOR` (`gemini` o `qwen`) o el flag `--proveedor` de
+> `generar_imagenes.py`. En esta fase solo dejas `estilo_visual` y (si aplica) `imagen_referencia`.
+
 ### 4. Redactar el guion estructurado
 
 Genera un guion con **escenas** numeradas. Cada escena debe tener:

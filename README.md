@@ -17,7 +17,7 @@ fase:
 | Fase | Skill | Qué produce |
 |---|---|---|
 | **1 · Ideación Creativa** | `/ideacion-video` | Idea refinada + parámetros + **guion estructurado** (`guion.json`) confirmado. Nunca genera media. |
-| **2 · Producción** | `/generacion-video` | Audio (`edge-tts`) → `.srt` (`faster-whisper`) → imagen por escena (Gemini *Nano Banana 2*) → **video final** (FFmpeg / Kinocut MCP) + revisión post-producción. |
+| **2 · Producción** | `/generacion-video` | Audio (`edge-tts`) → `.srt` (`faster-whisper`) → imagen por escena (**Gemini** o **Alibaba Qwen**) → aprobación de las imágenes (contact sheet) → **video final** (FFmpeg / Kinocut MCP) + revisión post-producción. |
 
 El flujo es **agente-orquestado**: el agente interpreta lenguaje natural, carga la skill y ejecuta
 cada etapa con herramientas locales (`scripts/*.py`) y servidores **MCP** (Gemini imagenes, Kinocut
@@ -32,6 +32,7 @@ edición).
 | **edge-tts** | Audio narrado (TTS) | Local (Python) |
 | **faster-whisper** | Transcripción a `.srt` con timestamps | Local (Python) |
 | **Gemini Nano Banana 2** (`gemini-3.1-flash-image-preview`) | Imagen por escena | MCP (`nano-banana-2-mcp`) vía `npx` |
+| **Alibaba Qwen** (`qwen-image-3.0` / `-pro`) | Imagen por escena (alternativa a Gemini) | DashScope (HTTP) |
 | **Kinocut** (`kino`) | Edición: concat, overlay, subtítulos, resize, quality gate | MCP local / CLI |
 | **FFmpeg** | Motor multimedia subyacente | Dependencia del sistema |
 | **Agente** (Claude Code · OpenCode · DeepSeek Harness) | Orquesta el pipeline | Cliente IA |
@@ -52,7 +53,7 @@ autoviral-ai/
 │   ├── verificar_entorno.py    # Paso 1: chequeo de dependencias
 │   ├── generar_audio.py        # Paso 2: edge-tts
 │   ├── transcribir.py          # Paso 3: faster-whisper -> .srt
-│   ├── generar_imagenes.py     # Paso 4: Gemini (Nano Banana 2)
+│   ├── generar_imagenes.py     # Paso 4: imágenes (Gemini o Alibaba Qwen)
 │   ├── ensamblar_video.py      # Paso 5: FFmpeg
 │   ├── pipeline.py             # Orquestador end-to-end
 │   ├── verificar_entorno.py    # Paso 1: chequeo de dependencias
@@ -111,8 +112,12 @@ cp .env.example .env      # una sola vez
 
 | Variable | Uso | Default |
 |---|---|---|
-| `GEMINI_API_KEY` | Imágenes Gemini (script CLI) | *(vacía — complétala)* |
-| `NANO_BANANA_MODEL` | Modelo de imagen | `gemini-3.1-flash-image-preview` |
+| `IMAGEN_PROVEEDOR` | Proveedor de imágenes: `gemini` o `qwen` | `gemini` |
+| `GEMINI_API_KEY` | Clave de imágenes Gemini (si `IMAGEN_PROVEEDOR=gemini`) | *(vacía — complétala)* |
+| `NANO_BANANA_MODEL` | Modelo de imagen Gemini | `gemini-3.1-flash-image-preview` |
+| `QWEN_API_KEY` | Clave de imágenes Alibaba Qwen (si `IMAGEN_PROVEEDOR=qwen`) | *(vacía)* |
+| `QWEN_API_HOST` | Host DashScope de tu workspace Qwen | `dashscope.aliyuncs.com` |
+| `QWEN_IMAGE_MODEL` | Modelo Qwen | `qwen-image-3.0` |
 | `EDGE_TTS_VOZ` | Voz de edge-tts | `es-ES-ElviraNeural` |
 | `WHISPER_MODEL` | Modelo de whisper | `small` |
 
@@ -139,9 +144,9 @@ final:
 python scripts/verificar_entorno.py            # 1. chequeo
 python scripts/generar_audio.py                # 2. audio (edge-tts)
 python scripts/transcribir.py                  # 3. .srt (faster-whisper)
-python scripts/generar_imagenes.py             # 4a. imágenes (CLI, lee la clave de .env)
-# 4b. alternativa: llamar a la herramienta MCP generate_image por escena
-python scripts/ensamblar_video.py              # 5. video (FFmpeg)
+python scripts/generar_imagenes.py             # 4a. imágenes (lee la clave de .env)
+python scripts/generar_imagenes.py --contact-sheet   # 4b. montaje para revisar las imágenes
+python scripts/ensamblar_video.py              # 5. video (FFmpeg) — tras aprobar las imágenes
 ```
 
 O todo de una vez con el orquestador (lee los valores por defecto de `.env`):
@@ -152,13 +157,39 @@ python scripts/pipeline.py --pasos ensamblado  # solo reensamblar (si ya hay med
 ```
 
 
-El video final queda en `workspace/video/final.mp4`. La skill presenta el resultado y permite
-ajustes post-producción (cortes, reemplazo de escena, cambio de duración o de voz).
+Tras generar las imágenes, el flujo **no** continúa solo: la skill pide al usuario que **apruebe**
+las imágenes (estilo, colores, animación, fondos) usando el **contact sheet**
+(`workspace/revision/contact_sheet.png`). Si no lo aprueba, pregunta el feedback y **regenera** las
+imágenes (con `--estilo "<feedback>"` para todas o `--solo escena-XX` para una) hasta obtener el
+visto bueno, y **recién entonces** ensambla. El video final queda en `workspace/video/final.mp4`.
+La skill presenta el resultado y permite ajustes post-producción (cortes, reemplazo de escena,
+cambio de duración o de voz).
 
 > **Imágenes vía MCP:** si prefieres que el agente llame a Gemini a través del servidor MCP (en
 > lugar del script CLI), conecta `.mcp.json` y usa la herramienta `generate_image` por escena
 > guardando cada resultado como `workspace/imagenes/MM_SS_descripcion.png`
 > (`MM_SS` = `inicio_segundos` de la escena formateado como `00_05`; ej. `00_05_gancho.png`).
+
+### Cambiar de proveedor de imágenes (Gemini ↔ Qwen)
+
+El paso de imágenes es **independiente del proveedor**. Cambia el activo con la variable
+`IMAGEN_PROVEEDOR` del `.env` o con `--proveedor` al ejecutar:
+
+```bash
+# Gemini (Google AI Studio / Nano Banana)
+GEMINI_API_KEY=... python scripts/generar_imagenes.py --proveedor gemini \
+  --model gemini-3.1-flash-image-preview --overwrite
+
+# Alibaba Cloud DashScope / Qwen (deja IMAGEN_PROVEEDOR=qwen en .env, o pásalo por flag)
+QWEN_API_KEY=... QWEN_API_HOST=ws-emxfi567101fw62r.ap-southeast-1.maas.aliyuncs.com \
+  python scripts/generar_imagenes.py --proveedor qwen --model qwen-image-3.0 --overwrite
+```
+
+El orquestador respeta el proveedor activo:
+
+```bash
+python scripts/pipeline.py --proveedor qwen --model qwen-image-3.0
+```
 
 ### Estilo consistente con imagen de referencia
 
@@ -269,6 +300,12 @@ primera ejecución descarga el modelo una sola vez (cache en `workspace/.cache_h
 
 > Recomendación para no gastar: usa `gemini-2.5-flash-image` (free tier) salvo que necesites la
 > calidad de Nano Banana 2; ambas se configuran en `.env`.
+
+> **¿Y si Gemini no tiene cuota?** El pipeline ya no depende solo de Gemini: con
+> `IMAGEN_PROVEEDOR=qwen` usa **Alibaba Cloud DashScope** (`qwen-image-3.0` / `qwen-image-3.0-pro`),
+> que en el modelo base suele tener un *free tier* por workspace. Configura `QWEN_API_KEY` y
+> `QWEN_API_HOST` en `.env` (la clave aparece en el CSV `Default Workspace-apiKey-.csv`:
+> `apiKey` → `QWEN_API_KEY`, `apiHost` → `QWEN_API_HOST`).
 
 ### ¿Cuántos tokens gasta el LLM del agente al correr el pipeline?
 

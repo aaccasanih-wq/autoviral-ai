@@ -21,6 +21,7 @@ workspace/audio/*
 workspace/transcripcion/*
 workspace/imagenes/*
 workspace/video/*
+workspace/revision/*
 workspace/guion.json
 workspace/.cache_hf/
 workspace/.cache_huggingface/
