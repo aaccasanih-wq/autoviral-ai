@@ -16,6 +16,26 @@ entregar un **video final** que el usuario pueda revisar y ajustar.
 - **Nunca** inventes timestamps ni narraciones: usa el `guion.json` como fuente de verdad.
 - No omitas la revisión post-producción: el usuario siempre ve el video antes de darlo por bueno.
 
+## Principio de mínima intervención (importante para el costo en tokens)
+
+El pipeline es **ejecutable de punta a punta**: los scripts hacen todo el trabajo pesado y no
+necesitan que tú edites ni "arregles" sus salidas. Sigue este contrato para no gastar tokens:
+
+1. **Ejecuta los scripts en orden** (o `python scripts/pipeline.py`) y **no intervengas** mientras
+   corren: no edites `workspace/*`, no regeneres archivos a mano, no modifiques el código ni los
+   scripts, no crees archivos intermedios que no pida el pipeline.
+2. **Espera el output final** (el video en `workspace/video/final.mp4`) y presenta ese resultado al
+   usuario (ruta, duración, resolución).
+3. **Pregunta al usuario si está conforme** o si quiere algún cambio. **Solo entonces**, y **solo si
+   el usuario pide un cambio concreto** (corte, reemplazo de escena, cambio de duración, otra voz),
+   vuelve a llamar a las herramientas/scripts para hacerlo. No apliques cambios por tu cuenta.
+4. Si un script devuelve un error, **léelo, corrígelo una vez** si es un problema de entrada (p. ej.
+   guion mal formado) y vuelve a ejecutar; si el fallo es del código, comunícalo y propón el arreglo
+   en vez de iterar hasta el infinito.
+
+Si el pipeline funciona como se espera, todo el trabajo es: 1 comando de verificación + el
+orquestador + leer el output final + preguntar. Eso minimiza el consumo de tokens.
+
 ## Fuente de verdad
 
 El guion vive en `workspace/guion.json` (o `config/guion.json`). Si no existe pero hay un guion en

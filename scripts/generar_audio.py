@@ -20,9 +20,12 @@ import sys
 from pathlib import Path
 
 from guion import cargar_guion, escenas, guardar_json
+from envutil import cargar_env, voz_por_defecto
 
-# Voz por defecto (edge-tts, voz en español de Microsoft/Elvira azure). Ajustable en CLI.
-VOZ_DEF = "es-ES-ElviraNeural"
+cargar_env()
+
+# Voz por defecto (edge-tts, voz en español). Ajustable por env EDGE_TTS_VOZ o por CLI --voz.
+VOZ_DEF = voz_por_defecto()
 
 
 def _leer_duracion(path: Path) -> float:
@@ -80,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--guion", default="workspace/guion.json", help="Ruta al guion.json.")
     ap.add_argument("--outdir", default="workspace/audio", help="Carpeta de salida.")
     ap.add_argument("--voz", default=VOZ_DEF, help="Voz de edge-tts.")
-    ap.add_argument("--rate", default="+0%", help="Velocidad de la voz (p. ej. -10%, +5%).")
+    ap.add_argument("--rate", default="+0%", help="Velocidad de la voz (p. ej. -10%% o +5%%).")
     args = ap.parse_args(argv)
 
     try:

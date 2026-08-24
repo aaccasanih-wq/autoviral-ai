@@ -17,6 +17,7 @@ google-genai>=1.0.0
 # --- Utilidades ---
 requests>=2.31.0
 mutagen>=1.47.0  # leer duración de los mp3 sin depender de ffmpeg
+python-dotenv>=1.0.0  # cargar GEMINI_API_KEY desde el archivo .env del proyecto
 
 # --- Opcional: edicion via Kinocut (requiere Python 3.11+) ---
 # kinocut>=1.15.0

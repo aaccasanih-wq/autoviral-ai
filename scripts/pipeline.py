@@ -17,6 +17,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from envutil import cargar_env, model_imagen_por_defecto, voz_por_defecto, whisper_por_defecto
+
+cargar_env()
+
 RAIZ = Path(__file__).resolve().parent.parent
 
 PASOS = {"audio", "transcripcion", "imagenes", "ensamblado"}
@@ -61,10 +65,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--guion", default="workspace/guion.json", help="Ruta al guion.json.")
     ap.add_argument("--pasos", default="all",
                     help="Etapas a ejecutar, separadas por coma, o 'all' (cadena completa).")
-    ap.add_argument("--voz", default="es-ES-ElviraNeural", help="Voz de edge-tts.")
-    ap.add_argument("--model", default="gemini-3.1-flash-image-preview",
+    ap.add_argument("--voz", default=voz_por_defecto(), help="Voz de edge-tts.")
+    ap.add_argument("--model", default=model_imagen_por_defecto(),
                     help="Modelo de imagen de Gemini.")
-    ap.add_argument("--whisper-model", default="small",
+    ap.add_argument("--whisper-model", default=whisper_por_defecto(),
                     help="Modelo whisper para la transcripción (tiny/base/small/...).")
     ap.add_argument("--formato", default=None, choices=["vertical", "horizontal"],
                     help="Sobrescribe el formato para el ensamblado.")

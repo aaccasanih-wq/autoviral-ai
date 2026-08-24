@@ -23,7 +23,11 @@ except ImportError:  # pragma: no cover - permit run from anywhere via PYTHONPAT
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from guion import cargar_guion, escenas, guardar_json, nombre_imagen  # type: ignore
 
-MODELO_DEF = "gemini-3.1-flash-image-preview"  # Nano Banana 2 (Google AI Studio, free tier)
+from envutil import cargar_env, model_imagen_por_defecto
+
+cargar_env()
+
+MODELO_DEF = model_imagen_por_defecto()  # por defecto gemini-3.1-flash-image-preview (Nano Banana 2)
 
 
 def _formato_a_ratio(formato: str) -> str:

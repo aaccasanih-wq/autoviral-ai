@@ -34,6 +34,7 @@ workspace/.cache_huggingface/
 # --- Secrets / credentials (never commit API keys) ---
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 credentials.yaml

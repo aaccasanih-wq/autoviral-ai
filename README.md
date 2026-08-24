@@ -78,25 +78,46 @@ autoviral-ai/
 
 ## Prerrequisitos
 
-- **Python 3.9+** (Kinocut opcional requiere **3.11+**).
-- **FFmpeg** en el PATH (requerido por el ensamblado y por Kinocut). En macOS:
-  `brew install ffmpeg` (o usa tu gestor de paquetes).
+- **Python 3.9+** — recomendado **3.11+** (para Kinocut y para evitar avisos de fin de vida útil en
+  algunas librerías de Google).
+- **FFmpeg** en el PATH (requerido por el ensamblado del video). En macOS:
+  `brew install ffmpeg`; en Ubuntu: `sudo apt install ffmpeg`.
 - **Node.js + npx** (para el servidor MCP de imágenes `nano-banana-2-mcp`).
-- **API key de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey) (free tier).
+- **API key de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey).
 
-### Instalar dependencias locales
+### Instalación fácil (todo en uno)
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Verifica el entorno:
+Tras clonar el repo, ejecuta `setup.sh` desde la raíz: crea `.venv`, instala las dependencias,
+prepara `.env` y verifica el entorno.
 
 ```bash
-python scripts/verificar_entorno.py
+bash setup.sh
 ```
+
+**Nota:** `setup.sh` **no** instala FFmpeg (es una dependencia del sistema). Si no lo tienes, el
+pipeline funciona hasta la transcripción; el paso de ensamblado te pedirá instalarlo.
+
+### Dónde van las claves API (`.env`)
+
+Las credenciales van en un archivo **`.env`** en la raíz del proyecto (ya está en `.gitignore`, así
+que nunca se sube a GitHub). Copia la plantilla y pega tu clave:
+
+```bash
+cp .env.example .env      # una sola vez
+# edita .env y completa GEMINI_API_KEY=
+```
+
+`.env` ya trae valores por defecto sensatos y comentados:
+
+| Variable | Uso | Default |
+|---|---|---|
+| `GEMINI_API_KEY` | Imágenes Gemini (script CLI) | *(vacía — complétala)* |
+| `NANO_BANANA_MODEL` | Modelo de imagen | `gemini-3.1-flash-image-preview` |
+| `EDGE_TTS_VOZ` | Voz de edge-tts | `es-ES-ElviraNeural` |
+| `WHISPER_MODEL` | Modelo de whisper | `small` |
+
+> **Servidor MCP de imágenes:** si además usas `.mcp.json` (p. ej. desde Claude Code/OpenCode), la
+> clave va también en su campo `env.GEMINI_API_KEY` (ver `config/mcp-nano-banana-2.json`).
 
 ---
 
@@ -110,23 +131,26 @@ Carga la skill de ideación y describe tu idea (o pide propuestas). La skill ref
 
 ### Fase 2 — Producir el video
 
-Carga la skill de producción con el guion ya confirmado. El agente ejecuta las etapas en orden:
+Carga la skill de producción con el guion ya confirmado. El agente ejecuta las etapas en orden
+**sin intervenir** (ver el principio de "mínima intervención" en la skill) y te presenta el video
+final:
 
 ```bash
 python scripts/verificar_entorno.py            # 1. chequeo
 python scripts/generar_audio.py                # 2. audio (edge-tts)
 python scripts/transcribir.py                  # 3. .srt (faster-whisper)
-GEMINI_API_KEY=... python scripts/generar_imagenes.py   # 4a. imágenes (CLI)
+python scripts/generar_imagenes.py             # 4a. imágenes (CLI, lee la clave de .env)
 # 4b. alternativa: llamar a la herramienta MCP generate_image por escena
 python scripts/ensamblar_video.py              # 5. video (FFmpeg)
 ```
 
-O todo de una vez con el orquestador:
+O todo de una vez con el orquestador (lee los valores por defecto de `.env`):
 
 ```bash
-GEMINI_API_KEY=... python scripts/pipeline.py   # ejecuta las 4 etapas
-python scripts/pipeline.py --pasos ensamblado   # solo reensamblar (si ya hay media)
+python scripts/pipeline.py                     # ejecuta las 4 etapas
+python scripts/pipeline.py --pasos ensamblado  # solo reensamblar (si ya hay media)
 ```
+
 
 El video final queda en `workspace/video/final.mp4`. La skill presenta el resultado y permite
 ajustes post-producción (cortes, reemplazo de escena, cambio de duración o de voz).
@@ -171,12 +195,68 @@ Los zips de distribución se generan y guardan en `dist/`:
 - `dist/ideacion-video-skill.zip`
 - `dist/generacion-video-skill.zip`
 
-Cada zip sigue la estructura oficial (`skill.json`, `instructions.md`, `README.md`). Generar con:
+Cada zip sigue la estructura oficial (`skill.json`, `instructions.md`, `README.md`). Se generan con:
 
 ```bash
-# desde tu máquina (una vez que definas los metadatos en dist/) — o manualmente:
-#   skill.json  + instructions.md + README.md en cada zip
+python scripts/empaquetar_skills.py   # -> dist/ideacion-video-skill.zip, dist/generacion-video-skill.zip
 ```
+
+---
+
+## FAQ y detalles
+
+### ¿Qué usas para editar el video: Kinocut o FFmpeg?
+
+Por defecto el pipeline usa **FFmpeg directamente** (script `scripts/ensamblar_video.py`), porque es
+autocontenido y portátil. **Kinocut** es un **servidor MCP local** (`pip install kinocut`, se ejecuta
+con `kino --mcp`) que envuelve FFmpeg con herramientas tipadas, *guardrails*, *Video Receipts* y
+*quality gates*. Es la alternativa "guardrailed" y está descrita en la skill como opción B.
+
+Ambos cumplen lo que pide el pipeline: concatenar las imágenes por escena (cada una con la duración
+real de su escena), superponer el audio narrado, **quemar** los subtítulos (`.srt`), hacer **resize**
+al formato (vertical 1080x1920 / horizontal 1920x1080) y exportar MP4 (H.264+AAC).
+
+> Kinocut requiere **Python 3.11+** y FFmpeg. Si no usas Kinocut, la vía FFmpeg es la que funciona.
+
+### ¿Cuánto tarda / recursos usa la transcripción (whisper)?
+
+Depende del modelo (`--model` / `WHISPER_MODEL`) y de si hay GPU. En **CPU** (valores orientativos,
+el tiempo crece ≈ lineal con la duración del audio, más una carga fija del modelo):
+
+| Modelo | Peso | RAM aprox. | Tiempo por ~60 s de audio (CPU) | Precisión |
+|---|---|---|---|---|
+| `tiny` | ~75 MB | ~0.5 GB | ~5–15 s | baja |
+| `base` | ~145 MB | ~0.7 GB | ~10–30 s | media-baja |
+| `small` (default) | ~460 MB | ~1 GB | ~20–60 s | buena |
+| `medium` | ~1.5 GB | ~3–5 GB | ~60–150 s | muy buena |
+| `large-v3` | ~3 GB | ~6+ GB | ~150–300 s | máxima |
+
+Para guiones cortos (15–60 s) el default **`small`** es el mejor equilibrio velocidad/calidad. La
+primera ejecución descarga el modelo una sola vez (cache en `workspace/.cache_hf`). Si tienes GPU
+(CUDA), se acelera mucho: usa `--device cuda --compute-type float16`.
+
+### ¿Gemini "Nano Banana" es gratis? ¿Cuántas imágenes al día?
+
+- **Nano Banana 2** (`gemini-3.1-flash-image-preview`) es un modelo **de pago / preview**; en el
+  free tier suele no estar disponible o con límites mínimos.
+- **Nano Banana** (`gemini-2.5-flash-image`) es la que típicamente tiene **free tier** en Google AI
+  Studio. Para usarla cambia `NANO_BANANA_MODEL=gemini-2.5-flash-image` en `.env`.
+- El free tier de Gemini no publica un número fijo de "imágenes/día": es una **cuota por minuto
+  (RPM)** que depende del modelo y la región. Para un video de 30–60 s solo necesitas ~5–8 imágenes
+  por video, así que incluso una cuota ajustada alcanza para varios videos al día. Confirma la cuota
+  exacta de tu clave en el panel de **Rate limits** de [AI Studio](https://aistudio.google.com/apikey).
+
+> Recomendación para no gastar: usa `gemini-2.5-flash-image` (free tier) salvo que necesites la
+> calidad de Nano Banana 2; ambas se configuran en `.env`.
+
+### ¿Cuántos tokens gasta el LLM del agente al correr el pipeline?
+
+Con el principio de **mínima intervención** (la skill `generacion-video` manda a no editar ni "arreglar"
+salidas), un video normal cuesta pocas llamadas: cargar la skill (~1–2k tokens), ejecutar el
+orquestador y leer el output final, y preguntar. **Aproximadamente 5–15k tokens por video** en
+conversación más las salidas de los comandos. Si un script fallara y el agente tuviera que depurar,
+crecería a 20–60k; por eso el diseño apunta a que los scripts funcionen solos y el agente solo
+**espere el resultado y pregunte**.
 
 ## Publicación y branches
 

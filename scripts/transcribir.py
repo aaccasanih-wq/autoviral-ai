@@ -20,6 +20,9 @@ import sys
 from pathlib import Path
 
 from guion import ms_timestamp, guardar_json
+from envutil import cargar_env, whisper_por_defecto
+
+cargar_env()
 
 # Mantén el cache del modelo de whisper DENTRO del proyecto (workspace/.cache_hf),
 # salvo que el usuario defina HF_HOME. Así el pipeline no necesita escribir en ~/.cache
@@ -81,16 +84,17 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Transcribir narración a .srt (faster-whisper).")
     ap.add_argument("--audio", default="workspace/audio/narracion.mp3", help="Ruta al audio.")
     ap.add_argument("--outdir", default="workspace/transcripcion", help="Carpeta de salida.")
-    ap.add_argument("--model", default="small",
-                    help="Modelo whisper: tiny/base/small/medium/large-v3.")
+    ap.add_argument("--model", default=None,
+                    help="Modelo whisper: tiny/base/small/medium/large-v3. Por defecto el de .env (small).")
     ap.add_argument("--device", default="cpu", help="cpu/cuda/auto.")
     ap.add_argument("--compute-type", default="int8", help="int8/float16/float32.")
     ap.add_argument("--language", default=None, help="Código ISO (p. ej. es). Por defecto auto.")
     args = ap.parse_args(argv)
+    model_size = args.model or whisper_por_defecto()
 
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    return transcribir(Path(args.audio), outdir, args.model, args.device,
+    return transcribir(Path(args.audio), outdir, model_size, args.device,
                        args.compute_type, args.language)
 
 
