@@ -17,7 +17,8 @@ import sys
 from pathlib import Path
 
 from envutil import (apikey_proveedor, cargar_env, model_imagen_por_defecto,
-                     proveedor_imagen_por_defecto, voz_por_defecto, whisper_por_defecto)
+                     proveedor_imagen_por_defecto, qwen_modelo_por_defecto,
+                     voz_por_defecto, whisper_por_defecto)
 
 cargar_env()
 
@@ -73,8 +74,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pasos", default="all",
                     help="Etapas a ejecutar, separadas por coma, o 'all' (cadena completa).")
     ap.add_argument("--voz", default=voz_por_defecto(), help="Voz de edge-tts.")
-    ap.add_argument("--model", default=model_imagen_por_defecto(),
-                    help="Modelo de imagen del proveedor activo (Gemini o Qwen).")
+    ap.add_argument("--model", default=None,
+                    help="Modelo de imagen del proveedor activo (Gemini o Qwen). "
+                         "Por defecto usa el del proveedor (NANO_BANANA_MODEL para gemini, "
+                         "QWEN_IMAGE_MODEL para qwen).")
     ap.add_argument("--proveedor", default=None, choices=["gemini", "qwen"],
                     help="Proveedor de imágenes para el paso 'imagenes'. " 
                          "Por defecto el de IMAGEN_PROVEEDOR o el detectado.")
@@ -105,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     proveedor = (args.proveedor or proveedor_imagen_por_defecto()).strip().lower()
+    # Modelo según el proveedor si el usuario no lo fijó explícitamente.
+    modelo = args.model or (qwen_modelo_por_defecto() if proveedor == "qwen"
+                            else model_imagen_por_defecto())
     for paso in pasos:
         # Las imágenes necesitan la API key del proveedor; avisamos sin abortar el resto.
         if paso == "imagenes" and not apikey_proveedor(proveedor):
@@ -112,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
                   f"({('QWEN_API_KEY' if proveedor == 'qwen' else 'GEMINI_API_KEY')}); "
                   f"se omite el paso 'imagenes'.", file=sys.stderr)
             continue
-        if _ejecutar(paso, guion, args.voz, args.model, args.formato, args.whisper_model,
+        if _ejecutar(paso, guion, args.voz, modelo, args.formato, args.whisper_model,
                      args.referencia, proveedor, args.estilo) != 0:
             print(f"[pipeline] El paso '{paso}' falló. Abortando.", file=sys.stderr)
             return 1
