@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "titulo": "El truco que te ahorra horas cada semana",
+  "descripcion": "Video corto de tips de productividad con un gancho fuerte y cierre en loop.",
+  "parametros": {
+    "duracion_segundos": 45,
+    "formato": "vertical",
+    "idioma": "es",
+    "estilo_visual": "cinemático natural, luz suave de mañana",
+    "publico": "adultos 25-40, usuarios de redes sociales"
+  },
+  "escenas": [
+    {
+      "id": "escena-01",
+      "inicio_segundos": 0,
+      "fin_segundos": 6,
+      "narracion": "¿Sabías que puedes recuperar una hora cada día con un solo cambio?",
+      "prompt_imagen": "Close-up of hands typing on a glowing laptop on a minimal wooden desk, soft morning window light, cinematic 35mm, shallow depth of field",
+      "notas": "Gancho inicial; mirada o manos en acción."
+    },
+    {
+      "id": "escena-02",
+      "inicio_segundos": 6,
+      "fin_segundos": 14,
+      "narracion": "El truco está en bloquear tu agenda los primeros noventa minutos del día.",
+      "prompt_imagen": "Overhead flat-lay of a notebook with a blocked 90-minute schedule, coffee cup and phone face down, clean minimal style, soft natural light",
+      "notas": "Mostrar la agenda bloqueada."
+    },
+    {
+      "id": "escena-03",
+      "inicio_segundos": 14,
+      "fin_segundos": 28,
+      "narracion": "Sin notificaciones, sin correos: solo tú y la tarea más importante. En hora y media logras lo que normalmente te cuesta toda la mañana.",
+      "prompt_imagen": "Person focused at a desk with phone switched off and a smartwatch on do-not-disturb, headphones on, cinematic wide shot, warm key light",
+      "notas": "Cambio de ritmo; concentración total."
+    },
+    {
+      "id": "escena-04",
+      "inicio_segundos": 28,
+      "fin_segundos": 36,
+      "narracion": "El resto del día, tu correo se responde solo y tus reuniones fluyen.",
+      "prompt_imagen": "Clear tidy desk with a checklist and headphones, bright and airy, energetic and organized, 50mm lens, soft bokeh",
+      "notas": "Resultado: día más calmado y productivo."
+    },
+    {
+      "id": "escena-05",
+      "inicio_segundos": 36,
+      "fin_segundos": 45,
+      "narracion": "Empieza mañana: bloquea tu primera hora y cuéntame en los comentarios cómo te fue.",
+      "prompt_imagen": "Golden hour close-up of a person looking at camera with a slight smile, calendar app floating beside, softly blurred background, invite to comment",
+      "notas": "Llamada a la acción; invita a comentar."
+    }
+  ]
+}

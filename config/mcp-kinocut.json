@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "kinocut": {
+      "command": "kino",
+      "args": ["--mcp"],
+      "env": {}
+    }
+  }
+}

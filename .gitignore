@@ -1,0 +1,52 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist-packages/
+*.egg
+.venv/
+venv/
+env/
+.conda/
+
+# --- Virtual envs ---
+.python-version
+.pipenv/
+
+# --- Data / workspace artifacts (generated media + model cache) ---
+workspace/audio/*
+workspace/transcripcion/*
+workspace/imagenes/*
+workspace/video/*
+workspace/guion.json
+workspace/.cache_hf/
+workspace/.cache_huggingface/
+!workspace/**/.gitkeep
+
+# --- MCP / agent caches ---
+.mcp/
+.agents/local/
+*.log
+
+# --- Secrets / credentials (never commit API keys) ---
+.env
+.env.*
+*.key
+*.pem
+credentials.yaml
+.credentials.yaml
+
+# --- Generated skill bundles ---
+# dist/*.zip are tracked deliverable by design; keep them committed.
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~

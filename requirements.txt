@@ -1,0 +1,22 @@
+# AutoViral AI — dependencias del pipeline local
+# Los servidores MCP (Gemini imagenes y Kinocut edicion) se instalan/ejecutan aparte;
+# aqui se listan unicamente las herramientas locales que llaman los scripts.
+
+# --- Fase 2, paso 1: text-to-speech (audio narrado) ---
+edge-tts>=6.1.0
+
+# --- Fase 2, paso 2: transcripcion a .srt con timestamps ---
+faster-whisper>=1.0.0
+
+# --- Fase 2, paso 3 (alternativa CLI a Gemini MCP): generacion de imagenes ---
+# Cliente oficial de Google para Gemini. Permite llamar a "Nano Banana 2"
+# (gemini-3.1-flash-image-preview) sin pasar por el servidor MCP.
+# El agente normalmente usara el servidor MCP nano-banana-2 en su lugar.
+google-genai>=1.0.0
+
+# --- Utilidades ---
+requests>=2.31.0
+mutagen>=1.47.0  # leer duración de los mp3 sin depender de ffmpeg
+
+# --- Opcional: edicion via Kinocut (requiere Python 3.11+) ---
+# kinocut>=1.15.0

@@ -1,0 +1,12 @@
+{
+  "voz": "es-ES-ElviraNeural",
+  "modelo_imagen": "gemini-3.1-flash-image-preview",
+  "modelo_whisper": "small",
+  "fps": 30,
+  "formato": "vertical",
+  "resolucion": { "vertical": "1080x1920", "horizontal": "1920x1080" },
+  "salida_audio": "workspace/audio",
+  "salida_transcripcion": "workspace/transcripcion",
+  "salida_imagenes": "workspace/imagenes",
+  "salida_video": "workspace/video"
+}

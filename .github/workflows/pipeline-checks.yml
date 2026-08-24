@@ -1,0 +1,43 @@
+name: Pipeline checks
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile scripts (syntax check)
+        run: python -m compileall -q scripts
+
+      - name: Validate example guion against the schema
+        run: |
+          PYTHONPATH=scripts python - <<'PY'
+          import json
+          from guion import cargar_guion
+          g = cargar_guion("config/guion.example.json")
+          print("JSON válido:", g["titulo"], "| escenas:", len(g["escenas"]), "|", g["parametros"]["formato"])
+          PY
+
+      - name: Validate skill bundles have required frontmatter
+        run: |
+          for s in ideacion-video generacion-video; do
+            test -f "skills/$s/SKILL.md" || { echo "Falta skills/$s/SKILL.md"; exit 1; }
+            head -3 "skills/$s/SKILL.md" | grep -q "^name: $s$" || { echo "frontmatter name inválido en $s"; exit 1; }
+            grep -q "^description:" "skills/$s/SKILL.md" || { echo "falta description en $s"; exit 1; }
+            echo "$s OK"
+          done
+
+      - name: Environment report (informational)
+        if: always()
+        run: PYTHONPATH=scripts python scripts/verificar_entorno.py --json || true
