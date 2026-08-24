@@ -26,6 +26,7 @@ workspace/**/video/*
 workspace/**/revision/*
 workspace/**/guion.json
 workspace/**/prompts.txt
+workspace/**/referencia_*.png
 workspace/**/.cache_hf/*
 workspace/**/.cache_huggingface/*
 !workspace/**/.gitkeep

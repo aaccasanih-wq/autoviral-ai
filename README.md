@@ -29,16 +29,17 @@ edición).
 
 | Componente | Rol | Tipo |
 |---|---|---|
-| **edge-tts** | Audio narrado (TTS) | Local (Python) |
+| **edge-tts / Google Cloud TTS** | Audio narrado (TTS **modular**: `--motor edge\|gcp`) | edge: servicio online gratis de Microsoft · gcp: API con free tier mensual |
 | **faster-whisper** | Transcripción a `.srt` con timestamps | Local (Python) |
 | **Gemini Nano Banana 2** (`gemini-3.1-flash-image-preview`) | Imagen por escena | MCP (`nano-banana-2-mcp`) vía `npx` |
-| **Alibaba Qwen** (`qwen-image-3.0` / `-pro`) | Imagen por escena (alternativa a Gemini) | DashScope (HTTP) |
+| **Alibaba Qwen** (`qwen-image-2.0/3.0`) | Imagen por escena (alternativa a Gemini) — con **seed de consistencia** por video | DashScope (HTTP) |
 | **Kinocut** (`kino`) | Edición: concat, overlay, subtítulos, resize, quality gate | MCP local / CLI |
 | **FFmpeg** | Motor multimedia subyacente | Dependencia del sistema |
 | **Agente** (Claude Code · OpenCode · DeepSeek Harness) | Orquesta el pipeline | Cliente IA |
 
 > **Costo:** `edge-tts`, `faster-whisper` y Kinocut son gratuitos/open-source. Gemini *Nano Banana 2*
-> opera en el free tier de Google AI Studio. No hace falta suscripción de pago.
+> opera en el free tier de Google AI Studio. No hace falta suscripción de pago. Para TTS premium,
+> **Google Cloud TTS** ofrece free tier mensual permanente (WaveNet 4M chars, Neural2 1M chars).
 
 ---
 
@@ -119,7 +120,12 @@ cp .env.example .env      # una sola vez
 | `QWEN_API_HOST` | Host DashScope de tu workspace Qwen | `dashscope.aliyuncs.com` |
 | `QWEN_IMAGE_MODEL` | Modelo Qwen | `qwen-image-2.0` |
 | `QWEN_RPM` | Máx. peticiones/min a Qwen (el script las espacia) | `2` (free tier `qwen-image-2.0`; `3.0` → `5`) |
-| `EDGE_TTS_VOZ` | Voz de edge-tts | `es-ES-ElviraNeural` |
+| `IMAGEN_SEED` | Seed fija de imágenes; vacía = auto-derivada del título (misma idea = misma seed) | *(vacía)* |
+| `QWEN_PROMPT_EXTEND` | Reescritura del prompt por Qwen; `false` (default) = máxima consistencia entre escenas | `false` |
+| `TTS_MOTOR` | Motor TTS: `edge` o `gcp`; vacío = automático (gcp si hay `GCP_TTS_API_KEY`) | *(vacío)* |
+| `GCP_TTS_API_KEY` | Clave de Google Cloud Text-to-Speech (motor `gcp`) | *(vacía)* |
+| `GCP_TTS_VOZ` | Voz de Google Cloud TTS (Neural2/Wavenet/Chirp3-HD) | `es-ES-Neural2-F` |
+| `EDGE_TTS_VOZ` | Voz de edge-tts (motor `edge`) | `es-ES-ElviraNeural` |
 | `WHISPER_MODEL` | Modelo de whisper | `small` |
 
 > **Servidor MCP de imágenes:** si además usas `.mcp.json` (p. ej. desde Claude Code/OpenCode), la
@@ -160,7 +166,7 @@ lugar de `workspace/...`, todas las rutas se derivan de la carpeta de la sesión
 
 ```bash
 python scripts/verificar_entorno.py                             # 1. chequeo
-python scripts/generar_audio.py --guion <sesión>/guion.json     # 2. audio (edge-tts)
+python scripts/generar_audio.py --guion <sesión>/guion.json     # 2. audio (TTS modular edge/gcp)
 python scripts/transcribir.py --audio <sesión>/audio/narracion.mp3 \
   --outdir <sesión>/transcripcion                               # 3. .srt (faster-whisper)
 python scripts/generar_imagenes.py --guion <sesión>/guion.json --export-prompts  # 4a. prompts editables
@@ -215,6 +221,40 @@ El orquestador respeta el proveedor activo:
 python scripts/pipeline.py --proveedor qwen --model qwen-image-3.0
 ```
 
+### Motor de TTS modular (edge-tts ↔ Google Cloud TTS)
+
+El paso de audio **no está atado a un motor**: `generar_audio.py` soporta dos motores
+intercambiables con la misma salida (mp3 por escena + `narracion.mp3` + `timings.json`).
+
+| Motor | Clave `.env` | Calidad | Costo |
+|---|---|---|---|
+| `edge` (default) | *(ninguna)* | Buena | Gratis — servicio online de Microsoft Edge Read-Aloud (**no es local**; hace una llamada de red, pero es gratis y sin API key) |
+| `gcp` | `GCP_TTS_API_KEY` | Muy buena (Neural2/WaveNet/Chirp 3 HD) | **Free tier mensual permanente**: WaveNet 4M chars, Neural2 1M chars (≈ USD 16 de valor), Chirp 3 HD 1M chars; luego USD 4–30 por 1M chars |
+
+**Selección automática:** si `GCP_TTS_API_KEY` existe en `.env` se usa `gcp`; si no, `edge`.
+Fuerza uno con `--motor edge|gcp` o `TTS_MOTOR` en `.env`. También puede venir en el guion
+(`parametros.tts.motor`); prioridad: **CLI > guion > `.env` > automático**.
+
+**Tono según el video:** ajusta voz, velocidad y tono por video — con flags
+(`--voz`, `--rate -10%`, `--pitch -2`) o dejando en el guion
+`parametros.tts = {"motor": "edge", "voz": "es-MX-JorgeNeural", "rate": "-10%", "pitch": "-2"}`
+(ideal para misterio/drama; para motivación, `rate +5%`). La skill de ideación define estos valores
+según la emoción del guion.
+
+**Cómo obtener la API key de Google Cloud TTS:**
+
+1. Crea un proyecto en [console.cloud.google.com](https://console.cloud.google.com) (requiere
+   billing activo — el free tier mensual se mantiene sin cargo dentro de la cuota).
+2. *APIs y servicios → Biblioteca* → habilita **Cloud Text-to-Speech API**.
+3. *APIs y servicios → Credenciales → Crear credenciales → Clave de API*.
+4. Pégala en `.env`: `GCP_TTS_API_KEY=AIza...` y (opcional) `GCP_TTS_VOZ=es-ES-Neural2-F`.
+5. Verifica con `python scripts/verificar_entorno.py` (sección *Motores TTS*).
+
+> Con 1M chars/mes gratis (Neural2) puedes narrar ~20 horas de audio al mes: de sobra para
+> varios videos semanales. Otras alternativas con free tier: Azure TTS F0 (500k chars/mes),
+> ElevenLabs (~10k chars/mes, calidad top), Amazon Polly (1M chars/mes solo el primer año);
+> OpenAI TTS no tiene free tier.
+
 ### Estilo consistente con imagen de referencia
 
 Si viste una imagen o captura cuyo **estilo** quieres replicar, puedes anclarlo en todo el pipeline
@@ -223,6 +263,8 @@ junto con cada prompt, de modo que **todas** las escenas heredan ese estilo.
 
 - **Pueden estar fuera del proyecto** (p. ej. en `~/Desktop/Captura....png`); el agente lee la ruta
   y la manda al modelo igualmente.
+- Se envían **como imágenes reales (base64) en cada llamada API**, junto con el prompt — anclaje
+  visual directo, no descripciones textuales generadas por el agente.
 - En el guion: `parametros.imagen_referencia` como **lista** de rutas (o un string): `["./ref.png"]`.
 - Por flag (tiene prioridad) al ejecutar imágenes — se puede repetir o separar por comas:
   ```bash
@@ -231,6 +273,22 @@ junto con cada prompt, de modo que **todas** las escenas heredan ese estilo.
     --referencia "/Users/.../Captura ...14.09.09.png"
   ```
 - Es **opcional**: si no se define, el pipeline genera con los prompts textuales sin referencia.
+
+### Consistencia de personaje con seed (Qwen)
+
+`qwen-image-2.0/3.0` soporta el parámetro `seed` (0–2147483647): la misma seed produce resultados
+**más consistentes** (no idénticos). El pipeline usa **una seed por video** para todas sus escenas:
+
+1. `--seed 12345` (CLI), o
+2. `IMAGEN_SEED` en `.env`, o
+3. **auto-derivada del título del guion** (crc32): la misma idea siempre usa la misma seed; otra
+   idea usa otra distinta. Queda registrada en `<sesión>/imagenes/reporte.json`.
+
+La seed estabiliza estilo y paleta. Para que el **personaje** sea idéntico entre escenas, la skill
+de ideación repite además una *ficha de personaje* literal en cada `prompt_imagen` y se envían las
+imágenes de referencia. `prompt_extend` está **desactivado por defecto**
+(`QWEN_PROMPT_EXTEND=false`) para que el modelo no reescriba los prompts (cada reescritura añade
+varianza). Gemini no soporta seed (se ignora con un aviso).
 
 ---
 

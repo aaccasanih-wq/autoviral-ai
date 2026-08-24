@@ -32,6 +32,26 @@ skill **nunca** ejecuta comandos ni crea media: es pura ideación y redacción d
 Pregunta lo mínimo necesario (no hagas un interrogatorio). Determina:
 
 - ¿El usuario ya tiene una idea, o quiere que se la propongas?
+- **Nicho** del canal (pregúntalo SIEMPRE si no se conoce; es clave para ideas, estilo y
+  monetización). Opciones habituales en TikTok/Shorts:
+  | Nicho | Ejemplos de ángulo | Nota de monetización |
+  |---|---|---|
+  | Finanzas e inversiones | Datos impactantes, errores de dinero, casos reales | RPM alto; muy monetizable |
+  | Tech e IA | Herramientas, noticias, tutoriales exprés | RPM alto; audiencia fiel |
+  | Salud y bienestar | Hábitos, mitos, rutinas | Alto alcance; cuidar afirmaciones médicas |
+  | Novelas / dramas | Mini-historias con giro, relatos de ficción | Retención altísima; series → seguidores |
+  | Misterio / true crime | Casos reales sin resolver, desapariciones | Retención y comentarios altos |
+  | Motivación / disciplina | Discursos, hábitos, mentalidad | Fácil de producir en serie |
+  | Humor / comedia | Skets, situaciones cotidianas | Viralidad alta; RPM bajo |
+  | Belleza y moda | Antes/después, trucos | Buenas marcas patrocinadoras |
+  | Cocina / recetas | Recetas exprés, trucos de cocina | Guardados altos |
+  | Deportes / fitness | Rutinas, datos de atletas | Comunidad muy activa |
+  | Gaming | Clips, curiosidades, hacks | Audiencia joven; streams complementarios |
+  | Educación / curiosidades | "¿Sabías que...?", explicaciones exprés | Compartidos altos |
+  | Viajes | Destinos, comparativas de costo | Patrocinios interesantes |
+  | Autos / mecánica | Datos, restauraciones, errores comunes | Nicho apasionado |
+  Si el usuario es nuevo, recomiéndale empezar por **finanzas, tech o misterio/historias**
+  (mejor RPM y retención para monetizar) y elegir UN solo nicho por canal.
 - **Formato** deseado: `vertical` (9:16, Shorts/Reels/TikTok) o `horizontal` (16:9, YouTube).
 - **Idioma** de la narración (por defecto `es`).
 - **Duración objetivo** (lo típico para shorts: 15s–60s).
@@ -43,7 +63,7 @@ Pregunta lo mínimo necesario (no hagas un interrogatorio). Determina:
 
 ### 2. Generar o refinar la idea
 
-- **Sin idea:** propón 3 opciones creativas con un gancho fuerte en los primeros 2 segundos.
+- **Sin idea:** propón 5 opciones creativas con un gancho fuerte en los primeros 2 segundos.
   Para cada una indica: título tentativo, gancho, por qué puede ser viral, y qué formato/duración
   encaja mejor.
 - **Con idea:** actúa como mentor y crítico. Refina iterativamente con 1–2 rondas de feedback.
@@ -62,9 +82,16 @@ Antes de redactar, confirma y deja constancia de:
 | Duración total | `parametros.duracion_segundos` | número, p. ej. `45` |
 | Formato | `parametros.formato` | `vertical` \| `horizontal` |
 | Idioma | `parametros.idioma` | código ISO, p. ej. `es` |
+| Nicho | `parametros.nicho` | p. ej. `finanzas`, `misterio`, `salud_bienestar` |
 | Estilo visual | `parametros.estilo_visual` | descripción corta |
 | Público objetivo | `parametros.publico` | p. ej. `adultos 25-40` |
 | Imagen de referencia (opcional) | `parametros.imagen_referencia` | ruta a un `.png/.jpg/...` cuyo estilo animado se replicará |
+| Tono de voz (opcional) | `parametros.tts` | objeto: `{"motor": "edge"\|"gcp", "voz": "...", "rate": "-10%", "pitch": "-2"}` según la emoción del guion |
+
+> **Tono de voz según el video (recomendado):** define `parametros.tts` acorde a la emoción del
+> guion — misterio/drama: voz grave con `rate` negativo y `pitch` negativo; motivación: voz
+> energética con `rate` positivo; finanzas/educación: voz neutra a ritmo natural. La Fase 2 lo
+> consume `generar_audio.py` automáticamente (prioridad: CLI > guion > `.env`).
 
 > El **proveedor de imágenes** (Gemini o Alibaba Qwen) **no** se guarda en el guion: se elige al
 > producir, en la Fase 2, vía `IMAGEN_PROVEEDOR` (`gemini` o `qwen`) o el flag `--proveedor` de
@@ -85,11 +112,24 @@ Reglas de redacción:
 - La narración debe sumar ~cuando se lee en voz alta al ritmo de la duración total. Si una escena
   dura 8 s, su narración debe ser de ~1–2 líneas habladas.
 - Los `prompt_imagen` deben ser **autónomos** (sin referencias cruzadas ni pronombres ambiguos).
+- **Consistencia de personaje y estilo (OBLIGATORIO si hay personaje recurrente):** define una
+  **ficha de personaje** y una **ficha de estilo** y repítelas **literalmente (verbatim, mismas
+  palabras) al inicio de cada `prompt_imagen`**. Los modelos de imagen no recuerdan escenas
+  anteriores — la única forma de mantener al personaje idéntico entre escenas es que la descripción
+  sea idéntica. Ejemplo de ficha de personaje:
+  `CHARACTER: Martin, a Spanish man in his early 30s, short messy brown hair, thick eyebrows,
+  light stubble, worn gray bomber jacket over a white t-shirt, blue jeans.`
+  Ejemplo de ficha de estilo:
+  `STYLE: flat 2D cartoon illustration, clean bold outlines, muted earthy color palette, soft
+  lighting, vertical 9:16 composition.`
+  Tras la ficha, añade la acción/escena concreta (sujeto + acción + iluminación + encuadre).
+  Cambia SOLO la parte de acción entre escenas.
 - Los timestamps deben ser **contiguos**: el `inicio` de una escena = el `fin` de la anterior.
 - La primera escena debe `inicio_segundos = 0`.
 - Si hay imagen de referencia, guárdala dentro del proyecto (p. ej. `workspace/referencia.png`)
   y guarda su ruta en `parametros.imagen_referencia`. Si la ruta es relativa, escríbela relativa a
-  la raíz del proyecto.
+  la raíz del proyecto. Las referencias se envían como imágenes reales al modelo generador
+  (anclaje visual directo), no como descripciones textuales.
 
 ### 5. Mostrar y pedir confirmación explícita
 
@@ -123,9 +163,11 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
     "duracion_segundos": 45,
     "formato": "vertical",
     "idioma": "es",
+    "nicho": "finanzas",
     "estilo_visual": "cinemático natural, luz suave",
     "publico": "adultos 25-40",
-    "imagen_referencia": []   // opcional: ruta(s) .png/.jpg/.webp cuyo estilo se replicará (string o lista)
+    "imagen_referencia": [],   // opcional: ruta(s) .png/.jpg/.webp cuyo estilo se replicará (string o lista)
+    "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"}   // opcional
   },
   "escenas": [
     {

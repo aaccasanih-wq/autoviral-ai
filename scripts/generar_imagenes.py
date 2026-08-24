@@ -41,6 +41,7 @@ import os
 import subprocess
 import sys
 import time
+import zlib
 from pathlib import Path
 
 try:
@@ -51,9 +52,9 @@ except ImportError:  # pragma: no cover - permit run from anywhere via PYTHONPAT
     from guion import (cargar_guion, cargar_prompts_txt, directorio_sesion, escenas,  # type: ignore
                        exportar_prompts_txt, guardar_json, imagenes_referencia, nombre_imagen)
 
-from envutil import (apikey_proveedor, cargar_env, model_imagen_por_defecto,
+from envutil import (apikey_proveedor, cargar_env, imagen_seed, model_imagen_por_defecto,
                      proveedor_imagen_por_defecto, qwen_generacion_url, qwen_modelo_por_defecto,
-                     qwen_rpm)
+                     qwen_prompt_extend, qwen_rpm)
 
 cargar_env()
 
@@ -221,8 +222,15 @@ def _descargar_qwen(url: str) -> bytes | None:
         return None
 
 
+def _seed_auto(guion: dict) -> int:
+    """Seed determinista a partir del guion (misma idea = misma seed; otra idea = otra seed)."""
+    base = f"{guion.get('titulo', '')}|{guion.get('descripcion', '')}"
+    return zlib.crc32(base.encode("utf-8")) % 2147483648  # rango 0..2147483647
+
+
 def _generar_qwen(apikey: str, modelo: str, prompt: str, size: str, out: Path,
-                  referencias: list[tuple[bytes, str]] | None = None) -> bool:
+                  referencias: list[tuple[bytes, str]] | None = None,
+                  seed: int | None = None, prompt_extend: bool = False) -> bool:
     """Genera una imagen con Qwen vía DashScope y la guarda en ``out``."""
     import urllib.error
     import urllib.request
@@ -233,10 +241,14 @@ def _generar_qwen(apikey: str, modelo: str, prompt: str, size: str, out: Path,
         content.append({"image": f"data:{mime};base64,{b64}"})
     content.append({"text": prompt})
 
+    parameters: dict = {"prompt_extend": prompt_extend, "size": size, "n": 1}
+    if seed is not None:
+        # Misma seed para todas las escenas del video -> resultados más consistentes.
+        parameters["seed"] = max(0, min(int(seed), 2147483647))
     payload = {
         "model": modelo,
         "input": {"messages": [{"role": "user", "content": content}]},
-        "parameters": {"prompt_extend": True, "size": size, "n": 1},
+        "parameters": parameters,
     }
     req = urllib.request.Request(
         qwen_generacion_url(), data=json.dumps(payload).encode("utf-8"),
@@ -286,10 +298,12 @@ def _generar_qwen(apikey: str, modelo: str, prompt: str, size: str, out: Path,
 # ---------------------------------------------------------------------------
 
 def _generar(proveedor: str, client, apikey: str | None, modelo: str, prompt: str,
-             ratio: str, out: Path, referencias: list[tuple[bytes, str]] | None = None) -> bool:
+             ratio: str, out: Path, referencias: list[tuple[bytes, str]] | None = None,
+             seed: int | None = None, prompt_extend: bool = False) -> bool:
     if proveedor == "gemini":
         return _generar_gemini(client, modelo, prompt, ratio, out, referencias)
-    return _generar_qwen(apikey or "", modelo, prompt, _ratio_a_size(ratio), out, referencias)
+    return _generar_qwen(apikey or "", modelo, prompt, _ratio_a_size(ratio), out, referencias,
+                         seed=seed, prompt_extend=prompt_extend)
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +371,14 @@ def main(argv: list[str] | None = None) -> int:
                          "forma consistente en todas las escenas. Se puede repetir para varias "
                          "imágenes, o separar con comas. Si no se pasa, se usa "
                          "parametros.imagen_referencia del guion (lista o string).")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="Seed de generación (Qwen). Misma seed para todas las escenas del video "
+                         "-> resultados más consistentes. Default: IMAGEN_SEED del .env, o "
+                         "auto-derivada del título del guion (misma idea = misma seed).")
+    ap.add_argument("--prompt-extend", action="store_true",
+                    help="Activa la reescritura automática del prompt de Qwen (prompt_extend). "
+                         "Por defecto está DESACTIVADA (QWEN_PROMPT_EXTEND=false) para maximizar "
+                         "la consistencia entre escenas.")
     ap.add_argument("--contact-sheet", action="store_true",
                     help="Solo construye el montaje de las imágenes existentes y sale, "
                          "sin regenerar nada. Ruta: <session>/revision/contact_sheet.png.")
@@ -427,6 +449,18 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         gemini_client = genai.Client(api_key=apikey)
 
+    # Seed: --seed > IMAGEN_SEED > auto-derivada del guion (misma idea = misma seed).
+    seed = args.seed if args.seed is not None else imagen_seed()
+    if seed is None:
+        seed = _seed_auto(guion)
+    prompt_extend = args.prompt_extend or qwen_prompt_extend()
+    if proveedor == "qwen":
+        print(f"[imagenes] Seed de consistencia: {seed}"
+              f"{' (auto-derivada del guion)' if args.seed is None and imagen_seed() is None else ''}"
+              f" | prompt_extend={'on' if prompt_extend else 'off'}")
+    else:
+        print("[imagenes] Aviso: el proveedor 'gemini' no soporta seed; se ignora.", file=sys.stderr)
+
     escs = [e for e in escenas(guion) if not args.solo or e["id"] == args.solo]
     if not escs:
         print(f"[imagenes] No hay escenas que regenerar (solo={args.solo}).", file=sys.stderr)
@@ -453,7 +487,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.estilo:
             prompt += f"\nAjuste solicitado por el usuario: {args.estilo}"
         throttle.esperar()  # respetar el RPM antes de cada petición
-        if _generar(proveedor, gemini_client, apikey, modelo, prompt, ratio, out, referencias):
+        if _generar(proveedor, gemini_client, apikey, modelo, prompt, ratio, out, referencias,
+                    seed=seed, prompt_extend=prompt_extend):
             print(f"[imagenes] {idx}/{len(escs)} ({proveedor}/{modelo}) -> {out.name}")
             ok += 1
         else:
@@ -461,7 +496,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[imagenes] {idx}/{len(escs)} FALLÓ {esc['id']}")
 
     guardar_json({"proveedor": proveedor, "model": modelo, "ratio": ratio,
-                  "estilo": args.estilo, "fallidas": fallidas}, outdir / "reporte.json")
+                  "estilo": args.estilo, "seed": seed if proveedor == "qwen" else None,
+                  "prompt_extend": prompt_extend if proveedor == "qwen" else None,
+                  "fallidas": fallidas}, outdir / "reporte.json")
     print(f"[imagenes] OK: {ok} generadas, {len(fallidas)} fallidas.")
     if not fallidas:
         # Montaje de revisión para que el usuario apruebe el estilo.

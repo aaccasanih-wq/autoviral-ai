@@ -1,6 +1,6 @@
 ---
 name: generacion-video
-description: Ejecuta el pipeline técnico completo de producción de un video corto a partir de un guion ya confirmado: narración (edge-tts), transcripción a .srt (faster-whisper), imágenes por escena con proveedor intercambiable (Gemini Nano Banana 2 o Alibaba Qwen) y ensamblaje del video final (Kinocut/FFmpeg). Antes de generar imágenes pide al usuario que apruebe los prompts (y le ofrece editarlos), y después pide que apruebe las imágenes; si no está conforme, regenera con su feedback. Úsala solo en la Fase 2; nunca crea ideas creativas nuevas.
+description: Ejecuta el pipeline técnico completo de producción de un video corto a partir de un guion ya confirmado — narración con motor TTS modular (edge-tts o Google Cloud TTS, con tono configurable por guion), transcripción a .srt (faster-whisper), imágenes por escena con proveedor intercambiable (Gemini Nano Banana 2 o Alibaba Qwen, con seed estable por video) y ensamblaje del video final (FFmpeg/Kinocut). Antes de generar imágenes pide al usuario que apruebe los prompts (y le ofrece editarlos), y después pide que apruebe las imágenes — si no está conforme, regenera con su feedback. Úsala solo en la Fase 2 — nunca crea ideas creativas nuevas.
 whenToUse: El usuario ya tiene un guion confirmado (de /ideacion-video o pegado) y quiere generarlo, o quiere aplicar ajustes post-producción a un video ya generado.
 ---
 
@@ -93,13 +93,36 @@ python scripts/verificar_entorno.py
 Comprueba dependencias (`edge-tts`, `faster-whisper`, `google-genai`), `ffmpeg` y las herramientas
 MCP. Si falta algo, informa al usuario qué instalar (ver `README.md` → Prerrequisitos).
 
-### Paso 2 — Generar audio narrado (edge-tts)
+### Paso 2 — Generar audio narrado (TTS modular)
 
 ```bash
 python scripts/generar_audio.py --guion <sesión>/guion.json --voz es-ES-ElviraNeural
 ```
 
-Genera un `.mp3` por escena y `narracion.mp3` en `<sesión>/audio/`. La voz es configurable (`--voz`).
+Genera un `.mp3` por escena y `narracion.mp3` en `<sesión>/audio/`. El **motor de TTS es modular**
+(no hardcodeado a edge-tts):
+
+| Motor | `--motor` | Clave `.env` | Voces ejemplo | Calidad/costo |
+|---|---|---|---|---|
+| **edge-tts** (default) | `edge` | *(no necesita)* | `es-ES-ElviraNeural`, `es-MX-JorgeNeural` | Bueno, gratis (servicio online de Microsoft Edge, sin API key) |
+| **Google Cloud TTS** | `gcp` | `GCP_TTS_API_KEY` | `es-ES-Neural2-F`, `es-ES-Wavenet-C`, `es-ES-Chirp3-HD-Aoede` | Muy bueno; free tier mensual (Neural2 1M chars ≈ 20 h de audio) |
+
+- **Selección automática:** si existe `GCP_TTS_API_KEY` en `.env` se usa `gcp`; si no, `edge`.
+  Fuerza uno con `--motor edge|gcp` o `TTS_MOTOR` en `.env`.
+- **Tono según el video (importante):** el agente DEBE ajustar voz/velocidad/tono según el tema y
+  la emoción del guion. Prioridad: flags CLI > `parametros.tts` del `guion.json` > `.env` > default.
+  - `--voz` (ej. voz grave para misterio, energética para motivación)
+  - `--rate` (ej. `-10%` para suspenso, `+5%` para ritmo ágil)
+  - `--pitch` (ej. `-2` más grave/dramático, `+2` más agudo/alegre; en edge se manda como Hz)
+  - En el guion, la Fase 1 puede dejar `parametros.tts` = `{"motor": "edge", "voz": "...", "rate": "-10%", "pitch": "-2"}`.
+
+> **Google Cloud TTS — free tier (verificado):** asignación mensual permanente por familia de
+> voces: WaveNet **4M chars**, Neural2 **1M chars** (≈ USD 16 de valor), Chirp 3 HD **1M chars**,
+> Standard 4M chars. Requiere cuenta GCP con billing activo. API key — Console de Google Cloud →
+> *APIs y servicios → Biblioteca* → habilitar **Cloud Text-to-Speech API** → *Credenciales →
+> Crear credenciales → Clave de API* → pégala en `.env` como `GCP_TTS_API_KEY`.
+> Alternativas con free tier: Azure TTS F0 (500k chars/mes), ElevenLabs (~10k chars/mes),
+> Amazon Polly (1M chars/mes solo el primer año). OpenAI TTS no tiene free tier.
 
 ### Paso 3 — Transcribir a `.srt` (faster-whisper)
 
@@ -166,7 +189,19 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
     --referencia "/Users/.../Captura ...14.09.09.png" --overwrite
   ```
 
-  También pueden ir en `parametros.imagen_referencia` del guion (string o lista).
+  También pueden ir en `parametros.imagen_referencia` del guion (string o lista). Las imágenes se
+  **envían reales (base64) junto con el prompt en cada llamada API** — el anclaje visual directo
+  es el mecanismo principal de consistencia; no se sustituyen por descripciones textuales.
+- **Seed para consistencia (Qwen):** `qwen-image-2.0/3.0` soporta `parameters.seed` (0–2147483647).
+  El script usa **una misma seed para todas las escenas del video**: `--seed 12345`, o `IMAGEN_SEED`
+  en `.env`, o (default) **auto-derivada del título del guion** (crc32) — así la misma idea siempre
+  usa la misma seed y otra idea usa otra. La seed estabiliza estilo/paleta; la consistencia del
+  **personaje** depende además de repetir la misma "ficha de personaje" literal en cada prompt
+  (lo hace la Fase 1) y de las imágenes de referencia. La seed queda registrada en
+  `<sesión>/imagenes/reporte.json`. Gemini no soporta seed (se ignora con un aviso).
+- **prompt_extend:** por defecto **False** (`QWEN_PROMPT_EXTEND=false` en `.env` o `--prompt-extend`
+  para activarlo). La reescritura automática del prompt por parte del modelo añade varianza entre
+  escenas; desactivada, respeta tu prompt literal → más consistencia.
 - **Nombrado:** `MM_SS_<slug>.png`. Si una imagen falla, el script deja el detalle en
   `<sesión>/imagenes/reporte.json`.
 

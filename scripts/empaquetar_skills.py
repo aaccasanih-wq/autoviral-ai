@@ -24,11 +24,12 @@ RAIZ = Path(__file__).resolve().parent.parent
 SKILLS = ("ideacion-video", "generacion-video")
 DESCRIPCIONES = {
     "ideacion-video": ("Guía al usuario desde una idea vaga (o sin idea) hasta un guion de video "
-                       "corto final, estructurado y confirmado. Fase 1: ideación y redacción. "
+                       "corto final, estructurado y confirmado. Fase 1: nicho, ideación y redacción. "
                        "Nunca genera audio, imágenes ni video."),
     "generacion-video": ("Ejecuta el pipeline técnico de producción de un video corto desde un "
-                         "guion confirmado: audio (edge-tts), transcripción (.srt), imágenes por "
-                         "escena (Gemini) y ensamblado final (FFmpeg/Kinocut). Fase 2."),
+                         "guion confirmado: audio (TTS modular edge-tts / Google Cloud TTS), "
+                         "transcripción (.srt), imágenes por escena (Gemini o Qwen, con seed de "
+                         "consistencia por video) y ensamblado final (FFmpeg/Kinocut). Fase 2."),
 }
 
 

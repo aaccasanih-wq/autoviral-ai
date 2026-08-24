@@ -90,7 +90,58 @@ def qwen_generacion_url() -> str:
 
 
 def voz_por_defecto() -> str:
+    """Voz por defecto de edge-tts (alias retrocompatible de ``edge_tts_voz_por_defecto``)."""
+    return edge_tts_voz_por_defecto()
+
+
+def edge_tts_voz_por_defecto() -> str:
     return env_o("EDGE_TTS_VOZ", "es-ES-ElviraNeural") or "es-ES-ElviraNeural"
+
+
+# --- TTS modular: selección de motor y Google Cloud TTS ---
+
+def tts_motor_por_defecto() -> str:
+    """Motor TTS activo: ``edge`` o ``gcp``.
+
+    Prioridad: ``TTS_MOTOR`` del ``.env``; si no, automático — ``gcp`` si existe
+    ``GCP_TTS_API_KEY`` (el usuario ya configuró Google Cloud TTS), si no ``edge``.
+    """
+    val = (env_o("TTS_MOTOR", "") or "").strip().lower()
+    if val in ("edge", "gcp"):
+        return val
+    return "gcp" if gcp_tts_apikey() else "edge"
+
+
+def gcp_tts_apikey() -> str | None:
+    """API key de Google Cloud Text-to-Speech (o None si no está configurada)."""
+    return env_o("GCP_TTS_API_KEY") or env_o("GOOGLE_TTS_API_KEY")
+
+
+def gcp_tts_voz_por_defecto() -> str:
+    """Voz por defecto de Google Cloud TTS (familias Neural2/Wavenet/Chirp3-HD)."""
+    return env_o("GCP_TTS_VOZ", "es-ES-Neural2-F") or "es-ES-Neural2-F"
+
+
+# --- Imágenes: seed de consistencia y prompt_extend ---
+
+def imagen_seed() -> int | None:
+    """Seed fija para generación de imágenes (``IMAGEN_SEED``), o None para auto-derivarla."""
+    val = env_o("IMAGEN_SEED")
+    if val is None:
+        return None
+    try:
+        return max(0, min(int(val), 2147483647))
+    except (TypeError, ValueError):
+        return None
+
+
+def qwen_prompt_extend() -> bool:
+    """Reescritura automática del prompt por Qwen.
+
+    Default **False**: la reescritura añade varianza entre escenas y resta consistencia de
+    personaje/estilo. Actívala con ``QWEN_PROMPT_EXTEND=true`` o el flag ``--prompt-extend``.
+    """
+    return (env_o("QWEN_PROMPT_EXTEND", "false") or "false").strip().lower() in ("1", "true", "yes", "on")
 
 
 def whisper_por_defecto() -> str:
