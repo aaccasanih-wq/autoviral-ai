@@ -1,10 +1,12 @@
 """Genera los zips de distribución de cada skill para Claude Desktop.
 
-Estructura por zip (según PROJECT.md):
+Estructura por zip (formato de skill de Claude Desktop):
     <nombre>-skill.zip
-    ├── skill.json        # metadatos (nombre, versión, descripción)
-    ├── instructions.md    # instrucciones del sistema (contenido del skill)
-    └── README.md          # documentación breve
+    └── <nombre>/            # carpeta con el nombre de la skill
+        └── SKILL.md         # definición completa de la skill (con frontmatter)
+
+Claude Desktop importa la carpeta cuyo nombre es el de la skill y define el comportamiento del
+agente en el SKILL.md que está dentro.
 
 Uso:
     python scripts/empaquetar_skills.py [--dest dist]
@@ -69,15 +71,9 @@ def generar(dest: Path) -> list[Path]:
             raise FileNotFoundError(f"No existe {src}")
         z = dest / f"{nombre}-skill.zip"
         with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as fz:
-            fz.writestr("skill.json", json.dumps({
-                "name": nombre,
-                "version": "1.0.0",
-                "description": DESCRIPCIONES[nombre],
-                "author": "AutoViral AI",
-                "license": "MIT",
-            }, ensure_ascii=False, indent=2) + "\n")
-            fz.writestr("instructions.md", _body(src.read_text(encoding="utf-8")))
-            fz.writestr("README.md", _readme(nombre))
+            # Estructura de skill de Claude Desktop: carpeta con el nombre + SKILL.md dentro.
+            # El SKILL.md va completo (con el frontmatter name/description/whenToUse).
+            fz.writestr(f"{nombre}/SKILL.md", src.read_text(encoding="utf-8"))
         zips.append(z)
         print(f"[empaquetar] -> {z}")
     return zips

@@ -209,11 +209,18 @@ Los zips de distribución se generan y guardan en `dist/`:
 - `dist/ideacion-video-skill.zip`
 - `dist/generacion-video-skill.zip`
 
-Cada zip sigue la estructura oficial (`skill.json`, `instructions.md`, `README.md`). Se generan con:
+Cada zip usa la **estructura de skill de Claude Desktop**: una **carpeta con el nombre de la skill**
+(ej. `ideacion-video/`) y dentro su **`SKILL.md`** (definición completa con frontmatter). No va un
+plano de `skill.json`/`instructions.md`/`README.md`.
 
 ```bash
 python scripts/empaquetar_skills.py   # -> dist/ideacion-video-skill.zip, dist/generacion-video-skill.zip
 ```
+
+Ambos `SKILL.md` indican al agente que tiene disponible el conector **Desktop Commander**
+(ejecución de código/bash) en el equipo del usuario. `generacion-video` lo usa para correr los
+scripts del pipeline; `ideacion-video` recuerda que, pese a disponer del conector, **nunca** ejecuta
+comandos (es solo ideación).
 
 ---
 

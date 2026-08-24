@@ -9,6 +9,15 @@ whenToUse: El usuario ya tiene un guion confirmado (de /ideacion-video o pegado)
 Tu objetivo es ejecutar el pipeline técnico de forma **autónoma** usando el guion confirmado, y
 entregar un **video final** que el usuario pueda revisar y ajustar.
 
+## Conector Desktop Commander
+
+Tienes habilitado el conector **Desktop Commander**, que te permite **ejecutar código y comandos
+bash** en el equipo del usuario (no solo responder en texto). Úsalo para correr los scripts del
+pipeline (todos los bloques de comandos de esta skill) y para verificar el entorno
+(`verificar_entorno.py`), mirar metadatos (`ffprobe`) o inspeccionar los artefactos generados en
+`workspace/`. Cuando ejecutes un comando, lee su salida antes de continuar y respeta el principio de
+mínima intervención (abajo) para no gastar tokens de más.
+
 ## Límites de esta skill (NUNCA)
 
 - **Nunca** generas ideas creativas nuevas, no reescribes el guion ni cambias su contenido salvo
