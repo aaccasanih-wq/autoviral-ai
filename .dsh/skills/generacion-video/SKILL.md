@@ -100,6 +100,23 @@ GEMINI_API_KEY=... python scripts/generar_imagenes.py \
 
 Genera automáticamente `workspace/imagenes/MM_SS_descripcion.png` para cada escena.
 
+**Estilo consistente (imagen de referencia).** Si el guion tiene `parametros.imagen_referencia`
+(o quieres fijarlo con `--referencia`), el estilo animado de esa imagen se usa en **todas** las
+escenas: el script la envía como input a Gemini junto con cada `prompt_imagen`. Añade el flag a la
+vía CLI:
+
+```bash
+GEMINI_API_KEY=... python scripts/generar_imagenes.py \
+  --guion workspace/guion.json \
+  --outdir workspace/imagenes \
+  --model gemini-2.5-flash-image \
+  --referencia workspace/referencia.png
+```
+
+En la vía MCP, si la herramienta de generación admite un input de imagen, incluye la misma
+referencia con el `prompt_imagen` de cada escena para anclar el estilo; si no lo admite, usa la vía
+CLI con `--referencia` (o deja la ruta en `parametros.imagen_referencia` del guion).
+
 **Regla de nombrado:** `MM_SS` (dos dígitos de minutos, dos de segundos) + `_` + una
 slug corta del prompt. Es lo que el ensamblador usa para sincronizar cada imagen con su escena.
 Si una imagen falla, reintenta hasta 1 vez con un prompt ligeramente simplificado y luego continúa
@@ -138,6 +155,9 @@ contenedor por defecto es MP4 (H.264 + AAC).
    - **Cambio de duración:** ajusta `parametros.duracion_segundos` y las narraciones/escenas
      correspondientes, regenera audio → transcripción → imágenes → ensamblado.
    - **Cambio de voz:** repite el Paso 2 con otro `--voz` y re-transcribe y re-ensambla.
+   - **Cambio de estilo (imagen de referencia):** cambia/añade `--referencia` (o
+     `parametros.imagen_referencia`) y regenera las imágenes (`generar_imagenes --overwrite` y
+     re-ensambla).
 3. Iterar hasta que el usuario dé por bueno el video.
 
 ## Verificación final

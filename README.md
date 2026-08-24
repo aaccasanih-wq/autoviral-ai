@@ -160,6 +160,20 @@ ajustes post-producción (cortes, reemplazo de escena, cambio de duración o de 
 > guardando cada resultado como `workspace/imagenes/MM_SS_descripcion.png`
 > (`MM_SS` = `inicio_segundos` de la escena formateado como `00_05`; ej. `00_05_gancho.png`).
 
+### Estilo consistente con imagen de referencia
+
+Si viste un video animado que te gusta y quieres replicar su **estilo**, puedes anclarlo en todo el
+pipeline con una **imagen de referencia**. El script la envía a Gemini como input junto con cada
+`prompt_imagen`, de modo que **todas** las escenas heredan ese estilo.
+
+- En el guion: `parametros.imagen_referencia` (ruta al `.png/.jpg/...`, idealmente dentro del
+  proyecto, p. ej. `workspace/referencia.png`).
+- Por flag (tiene prioridad) al ejecutar imágenes:
+  ```bash
+  python scripts/pipeline.py --referencia workspace/referencia.png
+  ```
+- Es **opcional**: si no se define, el pipeline genera con los prompts textuales sin referencia.
+
 ---
 
 ## Cargar las skills en los agentes

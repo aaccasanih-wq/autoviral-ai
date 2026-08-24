@@ -43,6 +43,17 @@ def _run(cmd: list[str]) -> None:
         )
 
 
+def _soporta_filtro(nombre: str) -> bool:
+    """True si el ffmpeg en PATH incluye el filtro ``nombre`` (p. ej. 'subtitles')."""
+    import re
+    try:
+        out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"],
+                             capture_output=True, text=True).stdout
+    except Exception:
+        return False
+    return re.search(rf"(?<![-\w]){re.escape(nombre)}(?![-\w])", out) is not None
+
+
 def _cargar_timings(audio_dir: Path) -> dict[str, dict]:
     p = audio_dir / "timings.json"
     if not p.is_file():
@@ -124,18 +135,24 @@ def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
 
     # 2) Concatenar segmentos (mismo codec/tamaño).
     lista = tmp / "concat.txt"
-    lista.write_text("".join(f"file '{s.as_posix()}'\n" for s in segmentos), encoding="utf-8")
+    # Rutas ABSOLUTAS: el demuxer concat resuelve las rutas relativas respecto a la carpeta
+    # del archivo de lista, no del cwd. Usamos rutas absolutas para que sea independiente.
+    lista.write_text("".join(f"file '{s.resolve().as_posix()}'\n" for s in segmentos), encoding="utf-8")
     base = outdir / "_base.mp4"
     _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lista), "-c", "copy", str(base)])
 
     # 3) Mux audio + quemar subtítulos + exportar.
-    filtro = f"subtitles={_escape_filter_path(str(srt))}" if srt.is_file() else "null"
     final = outdir / salida
     cmd = ["ffmpeg", "-y", "-i", str(base), "-i", str(audio), "-map", "0:v", "-map", "1:a",
            "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-shortest"]
-    if filtro != "null":
-        cmd += ["-vf", filtro]
+    if srt.is_file():
+        if _soporta_filtro("subtitles"):
+            cmd += ["-vf", f"subtitles={_escape_filter_path(str(srt))}"]
+        else:
+            print("[ensamblar] Aviso: el ffmpeg actual no soporta el filtro 'subtitles' "
+                  "(compilado sin libass); se omite quemar subtítulos. El .srt queda en "
+                  "workspace/transcripcion/narracion.srt.", file=sys.stderr)
     cmd.append(str(final))
     _run(cmd)
 

@@ -67,7 +67,9 @@ def _concatenar_audio(entradas: list[Path], salida: Path) -> bool:
     if not ffmpeg:
         return False
     tmp = salida.with_suffix(".txt")
-    tmp.write_text("".join(f"file '{p.as_posix()}'\n" for p in entradas), encoding="utf-8")
+    # Rutas ABSOLUTAS: el demuxer concat resuelve las rutas relativas respecto a la carpeta
+    # del archivo de lista, no del cwd. Usamos rutas absolutas para que sea independiente.
+    tmp.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in entradas), encoding="utf-8")
     try:
         subprocess.run(
             [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(tmp),

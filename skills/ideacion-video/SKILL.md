@@ -29,6 +29,8 @@ Pregunta lo mínimo necesario (no hagas un interrogatorio). Determina:
 - **Idioma** de la narración (por defecto `es`).
 - **Duración objetivo** (lo típico para shorts: 15s–60s).
 - **Público objetivo** y **estilo visual** (cinemático, minimalista, mockumentary, etc.).
+- Si el usuario tiene una **imagen de referencia** (un video animado que le gusta) cuyo estilo
+  quiera replicar, anota su **ruta** (`.png`, `.jpg`, …) para fijar el estilo de forma consistente.
 
 ### 2. Generar o refinar la idea
 
@@ -53,6 +55,7 @@ Antes de redactar, confirma y deja constancia de:
 | Idioma | `parametros.idioma` | código ISO, p. ej. `es` |
 | Estilo visual | `parametros.estilo_visual` | descripción corta |
 | Público objetivo | `parametros.publico` | p. ej. `adultos 25-40` |
+| Imagen de referencia (opcional) | `parametros.imagen_referencia` | ruta a un `.png/.jpg/...` cuyo estilo animado se replicará |
 
 ### 4. Redactar el guion estructurado
 
@@ -71,6 +74,9 @@ Reglas de redacción:
 - Los `prompt_imagen` deben ser **autónomos** (sin referencias cruzadas ni pronombres ambiguos).
 - Los timestamps deben ser **contiguos**: el `inicio` de una escena = el `fin` de la anterior.
 - La primera escena debe `inicio_segundos = 0`.
+- Si hay imagen de referencia, guárdala dentro del proyecto (p. ej. `workspace/referencia.png`)
+  y guarda su ruta en `parametros.imagen_referencia`. Si la ruta es relativa, escríbela relativa a
+  la raíz del proyecto.
 
 ### 5. Mostrar y pedir confirmación explícita
 
@@ -95,7 +101,8 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
     "formato": "vertical",
     "idioma": "es",
     "estilo_visual": "cinemático natural, luz suave",
-    "publico": "adultos 25-40"
+    "publico": "adultos 25-40",
+    "imagen_referencia": ""   // opcional: ruta a un .png/.jpg cuyo estilo animado se replicará
   },
   "escenas": [
     {

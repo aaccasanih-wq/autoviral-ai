@@ -18,10 +18,10 @@ import sys
 from pathlib import Path
 
 try:
-    from guion import cargar_guion, escenas, guardar_json, nombre_imagen
+    from guion import cargar_guion, escenas, guardar_json, imagen_referencia, nombre_imagen
 except ImportError:  # pragma: no cover - permit run from anywhere via PYTHONPATH
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from guion import cargar_guion, escenas, guardar_json, nombre_imagen  # type: ignore
+    from guion import cargar_guion, escenas, guardar_json, imagen_referencia, nombre_imagen  # type: ignore
 
 from envutil import cargar_env, model_imagen_por_defecto
 
@@ -34,7 +34,33 @@ def _formato_a_ratio(formato: str) -> str:
     return "9:16" if formato == "vertical" else "16:9"
 
 
-def _generar(client, modelo: str, prompt: str, ratio: str, out: Path) -> bool:
+def _mime_tipo(path: Path) -> str:
+    """MIME a partir de la extensión de la imagen de referencia."""
+    ext = path.suffix.lower()
+    return {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp"}.get(ext, "image/png")
+
+
+def _leer_referencia(path: str | None) -> tuple[bytes, str] | None:
+    """Lee la imagen de referencia. Devuelve (bytes, mime) o ``None`` si no hay / falla."""
+    if not path:
+        return None
+    p = Path(path)
+    if not p.is_file():
+        print(f"[imagenes] AVISO: imagen de referencia no encontrada: {p}. "
+              f"Se ignora y se genera sin referencia.", file=sys.stderr)
+        return None
+    try:
+        data = p.read_bytes()
+    except OSError as e:
+        print(f"[imagenes] AVISO: no se pudo leer la referencia {p}: {e}. "
+              f"Se genera sin referencia.", file=sys.stderr)
+        return None
+    return data, _mime_tipo(p)
+
+
+def _generar(client, modelo: str, prompt: str, ratio: str, out: Path,
+             referencia: tuple[bytes, str] | None = None) -> bool:
     """Genera una imagen y la guarda en ``out``. Devuelve True si se escribió."""
     from google.genai import types
 
@@ -45,10 +71,17 @@ def _generar(client, modelo: str, prompt: str, ratio: str, out: Path) -> bool:
     except Exception:
         pass
 
+    # Si hay imagen de referencia, la enviamos como input junto con el prompt para
+    # anclar el estilo animado de forma consistente en todas las escenas.
+    contents: list = []
+    if referencia:
+        contents.append(types.Part.from_bytes(data=referencia[0], mime_type=referencia[1]))
+    contents.append(prompt)
+
     try:
         response = client.models.generate_content(
             model=modelo,
-            contents=prompt,
+            contents=contents,
             config=types.GenerateContentConfig(**config_kwargs),
         )
     except Exception as e:
@@ -93,6 +126,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--solo", default=None, help="Solo regenerar esta escena (id).")
     ap.add_argument("--overwrite", action="store_true", help="Regenera aunque exista el archivo.")
     ap.add_argument("--aspect", default=None, help="Forzar ratio (p. ej. 9:16).")
+    ap.add_argument("--referencia", default=None,
+                    help="Ruta a una imagen de referencia (.png/.jpg/...) cuyo estilo animado se "
+                         "usará de forma consistente en todas las escenas. Si no se pasa, se usa "
+                         "parametros.imagen_referencia del guion (si existe).")
     args = ap.parse_args(argv)
 
     apikey = args.apikey or os.environ.get("GEMINI_API_KEY")
@@ -105,6 +142,12 @@ def main(argv: list[str] | None = None) -> int:
     ratio = args.aspect or _formato_a_ratio(guion["parametros"]["formato"])
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
+
+    # Imagen de referencia: prioridad al argumento, luego al campo del guion.
+    referencia = _leer_referencia(args.referencia or imagen_referencia(guion))
+    if args.referencia or imagen_referencia(guion):
+        print(f"[imagenes] Estilo anclado a imagen de referencia: "
+              f"{args.referencia or imagen_referencia(guion)}")
 
     try:
         from google import genai
@@ -129,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
             ok += 1
             continue
         prompt = f"{esc['prompt_imagen']}. Aspect ratio {ratio}. High quality, crisp details."
-        if _generar(client, args.model, prompt, ratio, out):
+        if _generar(client, args.model, prompt, ratio, out, referencia):
             print(f"[imagenes] {idx}/{len(escs)} -> {out.name}")
             ok += 1
         else:

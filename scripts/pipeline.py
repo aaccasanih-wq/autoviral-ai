@@ -36,7 +36,7 @@ SCRIPT = {
 
 
 def _ejecutar(paso: str, guion: Path, voz: str, modelo: str, formatos: str,
-              whisper_model: str) -> int:
+              whisper_model: str, referencia: str | None = None) -> int:
     script = RAIZ / SCRIPT[paso]
     cmd = [sys.executable, str(script)]
     # Rutas por defecto del workspace (consistentes con config/settings.example.json).
@@ -49,6 +49,8 @@ def _ejecutar(paso: str, guion: Path, voz: str, modelo: str, formatos: str,
                 "--outdir", "workspace/transcripcion", "--model", whisper_model]
     elif paso == "imagenes":
         cmd += ["--outdir", "workspace/imagenes", "--model", modelo]
+        if referencia:
+            cmd += ["--referencia", referencia]
     elif paso == "ensamblado":
         cmd += ["--imagedir", "workspace/imagenes",
                 "--audio", "workspace/audio/narracion.mp3",
@@ -72,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="Modelo whisper para la transcripción (tiny/base/small/...).")
     ap.add_argument("--formato", default=None, choices=["vertical", "horizontal"],
                     help="Sobrescribe el formato para el ensamblado.")
+    ap.add_argument("--referencia", default=None,
+                    help="Ruta a una imagen de referencia (.png/.jpg/...) para el estilo animado "
+                         "de las imágenes. Si no se pasa, se usa parametros.imagen_referencia del "
+                         "guion (si existe).")
     args = ap.parse_args(argv)
 
     guion = Path(args.guion)
@@ -94,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr)
             continue
         if _ejecutar(paso, guion, args.voz, args.model, args.formato,
-                     args.whisper_model) != 0:
+                     args.whisper_model, args.referencia) != 0:
             print(f"[pipeline] El paso '{paso}' falló. Abortando.", file=sys.stderr)
             return 1
 

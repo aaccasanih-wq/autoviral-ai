@@ -47,6 +47,9 @@ def cargar_guion(path: str | Path) -> dict[str, Any]:
              "'parametros.formato' debe ser 'vertical' o 'horizontal'.")
     _require(not params.get("idioma") or isinstance(params["idioma"], str),
              "'parametros.idioma' debe ser un string.")
+    _require(not params.get("imagen_referencia")
+             or (isinstance(params["imagen_referencia"], str) and params["imagen_referencia"].strip()),
+             "'parametros.imagen_referencia' debe ser un string no vacío.")
 
     escenas = data.get("escenas", [])
     _require(isinstance(escenas, list) and escenas, "Debe existir al menos una escena.")
@@ -82,6 +85,19 @@ def formato(guion: dict[str, Any]) -> str:
 
 def duracion_objetivo(guion: dict[str, Any]) -> float:
     return float(guion["parametros"]["duracion_segundos"])
+
+
+def imagen_referencia(guion: dict[str, Any]) -> str | None:
+    """Ruta de la imagen de referencia de estilo, o ``None`` si no se definió.
+
+    Se define opcionalmente en ``parametros.imagen_referencia`` del guion. Sirve para que
+    el estilo visual de un video animado de referencia se mantenga consistente en todas
+    las escenas generadas.
+    """
+    ref = guion.get("parametros", {}).get("imagen_referencia")
+    if not isinstance(ref, str) or not ref.strip():
+        return None
+    return ref.strip()
 
 
 def mmss(segundos: float | int) -> str:
