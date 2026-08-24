@@ -1,13 +1,14 @@
 ---
 name: generacion-video
-description: Ejecuta el pipeline técnico completo de producción de un video corto a partir de un guion ya confirmado: narración (edge-tts), transcripción a .srt (faster-whisper), imágenes por escena con proveedor intercambiable (Gemini Nano Banana 2 o Alibaba Qwen) y ensamblaje del video final (Kinocut/FFmpeg). Tras generar las imágenes, pide al usuario que las apruebe y, si no está conforme, regenera con su feedback. Úsala solo en la Fase 2; nunca crea ideas creativas nuevas.
+description: Ejecuta el pipeline técnico completo de producción de un video corto a partir de un guion ya confirmado: narración (edge-tts), transcripción a .srt (faster-whisper), imágenes por escena con proveedor intercambiable (Gemini Nano Banana 2 o Alibaba Qwen) y ensamblaje del video final (Kinocut/FFmpeg). Antes de generar imágenes pide al usuario que apruebe los prompts (y le ofrece editarlos), y después pide que apruebe las imágenes; si no está conforme, regenera con su feedback. Úsala solo en la Fase 2; nunca crea ideas creativas nuevas.
 whenToUse: El usuario ya tiene un guion confirmado (de /ideacion-video o pegado) y quiere generarlo, o quiere aplicar ajustes post-producción a un video ya generado.
 ---
 
 # AutoViral AI — Fase 2: Producción Automatizada
 
 Tu objetivo es ejecutar el pipeline técnico de forma **autónoma** usando el guion confirmado, y
-entregar un **video final** que el usuario pueda revisar y ajustar.
+entregar un **video final** que el usuario pueda revisar y ajustar. No tienes que rebuscar carpetas:
+la estructura es fija y derivas las rutas del guion (ver abajo).
 
 ## Acceso a herramientas y entorno
 
@@ -22,48 +23,66 @@ acceso y no pidas permiso.
 - **Usa el virtualenv del proyecto**: los scripts corren mejor con `.venv/bin/python`
   (ya tiene `edge-tts`, `faster-whisper`, `google-genai`, `python-dotenv`, `mutagen`). Si esa ruta
   no existe, corre `bash setup.sh` primero.
-- **La API key del proveedor activo está en `.env`** (gitignored), no hace falta pasarla por
+- **La API key del proveedor activo está en `.env`** (gitignored): no hace falta pasarla por
   terminal. El proveedor y el modelo se leen de `IMAGEN_PROVEEDOR`, `QWEN_IMAGE_MODEL`, etc.
-- Úsalo para correr los scripts del pipeline, verificar el entorno (`verificar_entorno.py`), mirar
-  metadatos (`ffprobe`) o inspeccionar los artefactos en `workspace/`. Cuando ejecutes un comando,
-  lee su salida antes de continuar y respeta el principio de mínima intervención (abajo).
+- Cuando ejecutes un comando, **lee su salida** antes de continuar y respeta el principio de
+  mínima intervención (abajo).
+
+## Estructura de carpetas de trabajo (IMPORTANTE)
+
+Cada video vive en su **propia carpeta de sesión**, para que un video no pise a otro:
+
+```
+workspace/
+└── <fecha DD-MM-AA>/              # ej. 24-08-26 (carpeta del día)
+    └── <tema-slug>/               # ej. inflacion_y_deuda (una carpeta por idea/video)
+        ├── guion.json             # el guion confirmado
+        ├── prompts.txt            # prompts de imagen editables a mano
+        ├── audio/                 # mp3 por escena + narracion.mp3 + timings.json
+        ├── transcripcion/         # narracion.srt + narracion.json
+        ├── imagenes/              # MM_SS_*.png por escena + reporte.json
+        ├── revision/              # contact_sheet.png (montaje para aprobar imágenes)
+        └── video/                 # final.mp4 + reporte_ensamblado.json
+```
+
+**Cómo derivar rutas sin `ls`:** el directorio de sesión es la carpeta donde está `guion.json`.
+Todos los scripts, al pasarles `--guion <sesión>/guion.json`, derivan el resto de rutas por defecto
+(`<sesión>/audio`, `<sesión>/imagenes`, …). No hagas tool calls para descubrir dónde está cada cosa;
+calcula la ruta a partir del guion. La carpeta del día se crea con la fecha del día en formato
+`DD-MM-AA` y la carpeta del tema con un slug corto y sin acentos (p. ej. `inflacion_y_deuda`).
+
+> **Fase 1** ya dejó el guion en `<sesión>/guion.json`. Si no existe, escríbelo tú en esa ruta
+> siguiendo `config/guion.example.json`.
 
 ## Límites de esta skill (NUNCA)
 
 - **Nunca** generas ideas creativas nuevas, no reescribes el guion ni cambias su contenido salvo
-  que el usuario lo pida explícitamente como ajuste de post-producción.
+  que el usuario lo pida explícitamente como ajuste.
 - **Nunca** inventes timestamps ni narraciones: usa el `guion.json` como fuente de verdad.
+- **No preguntes si se queman los subtítulos**: con el ffmpeg actual no se puede (compilado sin
+  libass, faltaría descargar otro ffmpeg). Genera siempre el `.srt` como sidecar y, en el
+  ensamblado, el script lo omite automáticamente — no ofrezcas la opción ni lo menciones como
+  pendiente.
 - No omitas la revisión post-producción: el usuario siempre ve el video antes de darlo por bueno.
 
 ## Principio de mínima intervención (importante para el costo en tokens)
 
-El pipeline es **ejecutable de punta a punta**: los scripts hacen todo el trabajo pesado y no
-necesitan que tú edites ni "arregles" sus salidas. Sigue este contrato para no gastar tokens:
+Los scripts hacen el trabajo pesado y no necesitan que tú edites ni "arregles" sus salidas:
 
-1. **Ejecuta los scripts en orden** (o `python scripts/pipeline.py`) y **no intervengas** mientras
-   corren: no edites `workspace/*`, no regeneres archivos a mano, no modifiques el código ni los
-   scripts, no crees archivos intermedios que no pida el pipeline.
-2. **Espera el output final** (el video en `workspace/video/final.mp4`) y presenta ese resultado al
-   usuario (ruta, duración, resolución).
-3. **Pregunta al usuario si está conforme** o si quiere algún cambio. **Solo entonces**, y **solo si
-   el usuario pide un cambio concreto** (corte, reemplazo de escena, cambio de duración, otra voz),
-   vuelve a llamar a las herramientas/scripts para hacerlo. No apliques cambios por tu cuenta.
-4. Si un script devuelve un error, **léelo, corrígelo una vez** si es un problema de entrada (p. ej.
-   guion mal formado) y vuelve a ejecutar; si el fallo es del código, comunícalo y propón el arreglo
-   en vez de iterar hasta el infinito.
+1. **Ejecuta los scripts en orden** y **no intervengas** mientras corren (no edites `workspace/*`,
+   no regeneres a mano, no crees archivos intermedios).
+2. **Espera el output** en la carpeta de la sesión y presenta ese resultado (ruta, duración, resolución).
+3. **Pregunta al usuario si está conforme** y **solo** si pide un cambio concreto, vuelve a llamar a
+   los scripts.
+4. Si un script falla, léelo, corrígelo una vez si es problema de entrada y reintenta; si es del
+   código, comunícalo y propón el arreglo.
 
-Si el pipeline funciona como se espera, todo el trabajo es: 1 comando de verificación + el
-orquestador + leer el output final + preguntar. Eso minimiza el consumo de tokens.
-
-## Fuente de verdad
-
-El guion vive en `workspace/guion.json` (o `config/guion.json`). Si no existe pero hay un guion en
-la conversación, **escríbelo a `workspace/guion.json`** siguiendo el esquema de
-`config/guion.example.json` antes de empezar. Cualquier escena nueva usa los timestamps contiguos.
+Con esto, el trabajo es: un comando de verificación + los pasos + leer el output + preguntar (2
+preguntas: prompts e imágenes). Eso minimiza tokens.
 
 ## Orden de ejecución
 
-Ejecuta las etapas en este orden. Puedes correrlas por separado o todo de una vez con el orquestador.
+Ejecuta en este orden. Cada paso deriva sus rutas de `--guion <sesión>/guion.json`.
 
 ### Paso 1 — Verificar el entorno
 
@@ -71,158 +90,133 @@ Ejecuta las etapas en este orden. Puedes correrlas por separado o todo de una ve
 python scripts/verificar_entorno.py
 ```
 
-Comprueba dependencias (`edge-tts`, `faster-whisper`, `google-genai`), `ffmpeg` en el PATH y las
-herramientas MCP (`kino`, `nano-banana-2`). Si algo falta, informa al usuario qué instalar antes
-de continuar (ver `README.md` → Prerrequisitos).
+Comprueba dependencias (`edge-tts`, `faster-whisper`, `google-genai`), `ffmpeg` y las herramientas
+MCP. Si falta algo, informa al usuario qué instalar (ver `README.md` → Prerrequisitos).
 
 ### Paso 2 — Generar audio narrado (edge-tts)
 
 ```bash
-python scripts/generar_audio.py \
-  --guion workspace/guion.json \
-  --outdir workspace/audio \
-  --voz es-ES-ElviraNeural
+python scripts/generar_audio.py --guion <sesión>/guion.json --voz es-ES-ElviraNeural
 ```
 
-Genera un `.mp3` por escena (`escena-01.mp3`, …) y el track completo `narracion.mp3`.
-La voz es configurable; si el usuario quiere otra, cambia `--voz`.
+Genera un `.mp3` por escena y `narracion.mp3` en `<sesión>/audio/`. La voz es configurable (`--voz`).
 
 ### Paso 3 — Transcribir a `.srt` (faster-whisper)
 
 ```bash
 python scripts/transcribir.py \
-  --audio workspace/audio/narracion.mp3 \
-  --outdir workspace/transcripcion
+  --audio <sesión>/audio/narracion.mp3 --outdir <sesión>/transcripcion
 ```
 
-Produce `narracion.srt` (subtítulos con timestamps precisos) y `narracion.json` (timing por
-frase). Esto es lo que se quema sobre el video y lo que da la duración real de cada escena.
+Produce `narracion.srt` y `narracion.json` (duración real por frase). Los subtítulos NO se queman
+sobre el video (ver Límites); quedan como sidecar.
+
+### Paso 3.5 — Revisar y aprobar los prompts de imagen (obligatorio)
+
+Antes de generar imágenes, exporta el archivo de prompts **editable a mano**:
+
+```bash
+python scripts/generar_imagenes.py --guion <sesión>/guion.json --export-prompts
+# -> <sesión>/prompts.txt
+```
+
+1. **Muestra** los prompts al usuario (o el path `<sesión>/prompts.txt`) y **pregúntale si está de
+   acuerdo** con los prompts de generación de imágenes.
+2. **Dile** al usuario que tiene **dos vías** para cambiarlos:
+   - **Pedirte** que los ajustes tú (p. ej. "haz el prompt de la escena 3 más dramático").
+   - **Editarlos a mano** en `<sesión>/prompts.txt` y avisarte.
+3. Tras los cambios (tuyos o del usuario), el script usará **esos prompts** como input final (si el
+   archivo existe, tiene prioridad sobre el guion). **Itera hasta que el usuario apruebe los
+   prompts**; recién entonces genera las imágenes.
+
+> El archivo se crea la primera vez que corres el paso de imágenes con su contenido del guion.
+> `--export-prompts` lo (re)escribe; si ya existe y lo editaste a mano, el paso de imágenes lo
+> respeta.
 
 ### Paso 4 — Generar imágenes por escena (proveedor intercambiable)
 
-El paso `generar_imagenes.py` soporta **dos proveedores**. Elige el activo con `--proveedor`
-(o la variable `IMAGEN_PROVEEDOR` del `.env`; por defecto `gemini`). Cada uno usa su propia
-API key y modelo por defecto:
+Soporta **dos proveedores** (elige con `--proveedor` o `IMAGEN_PROVEEDOR`):
 
 | Proveedor | `--proveedor` | API key | Modelo por defecto | `--model` alternativo |
 |---|---|---|---|---|
 | Google (Nano Banana) | `gemini` | `GEMINI_API_KEY` | `gemini-3.1-flash-image-preview` | `gemini-2.5-flash-image` |
-| Alibaba Cloud | `qwen` | `QWEN_API_KEY` | `qwen-image-3.0` | `qwen-image-3.0-pro` |
-
-El host de Qwen se toma de `QWEN_API_HOST` (p. ej. `ws-emxfi567101fw62r.…maas.aliyuncs.com`).
-Cualquier clave/modelo se puede forzar con `--apikey` / `--model`.
-
-**Gemini:**
-```bash
-GEMINI_API_KEY=... python scripts/generar_imagenes.py \
-  --guion workspace/guion.json --outdir workspace/imagenes \
-  --proveedor gemini --model gemini-3.1-flash-image-preview
-```
-
-**Qwen (Alibaba DashScope):**
-```bash
-QWEN_API_KEY=... QWEN_API_HOST=ws-emxfi567101fw62r.ap-southeast-1.maas.aliyuncs.com \
-  python scripts/generar_imagenes.py \
-  --guion workspace/guion.json --outdir workspace/imagenes \
-  --proveedor qwen --model qwen-image-3.0
-```
-
-Genera automáticamente `workspace/imagenes/MM_SS_descripcion.png` para cada escena.
-
-> **Límite de peticiones (free tier de Alibaba):** el script **espacia** las peticiones para no
-> superar `QWEN_RPM` (por defecto **2/min**, el límite de `qwen-image-2.0`; si usas
-> `qwen-image-3.0` sube a 5). Si el usuario pide "ahora no", o quiere acelerar/cambiar el límite,
-> ajusta `QWEN_RPM` en `.env` (p. ej. `QWEN_RPM=5`). Con 5 escenas y 2/min, la generación tarda
-> ~2 min; es normal, no es un cuelgue.
-
-**Estilo consistente (imagen de referencia).** Si el guion tiene `parametros.imagen_referencia`
-(o quieres fijarlo con `--referencia`), el estilo animado de esa imagen se usa en **todas** las
-escenas: el script la envía como input al modelo junto con cada `prompt_imagen` (ambos proveedores
-lo soportan).
+| Alibaba Cloud | `qwen` | `QWEN_API_KEY` | `qwen-image-2.0` | `qwen-image-3.0` / `qwen-image-3.0-pro` |
 
 ```bash
-# (gemini) ... --model gemini-2.5-flash-image --referencia workspace/referencia.png
-# (qwen)   ... --model qwen-image-3.0 --referencia workspace/referencia.png
+# Gemini:
+python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor gemini --model gemini-3.1-flash-image-preview
+
+# Qwen (Alibaba DashScope; host en QWEN_API_HOST de .env):
+python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen --model qwen-image-2.0
 ```
 
-**Regla de nombrado:** `MM_SS` (dos dígitos de minutos, dos de segundos) + `_` + una
-slug corta del prompt. Es lo que el ensamblador usa para sincronizar cada imagen con su escena.
-Si una imagen falla, anótala y al final reporta las escenas sin imagen (no reinventes: el script
-deja el detalle en `workspace/imagenes/reporte.json`).
+- Escribe `<sesión>/imagenes/MM_SS_*.png` por escena (si los prompts editados en `prompts.txt`
+  existen, los usa).
+- **Límite de peticiones:** el script **espacia** las peticiones según `QWEN_RPM` (por defecto
+  **2/min** en `qwen-image-2.0`; 5/min en `qwen-image-3.0`). Con 5 escenas y 2/min tarda ~2 min;
+  es normal. Si el usuario lo pide, ajustá `QWEN_RPM` en `.env`.
+- **Estilo consistente / imagen de referencia:** si el usuario quiere que las imágenes sigan un
+  estilo de una o varias imágenes de referencia (pueden estar **fuera del proyecto**, p. ej. en
+  `~/Desktop/...`), pásalas con `--referencia` (repetible o separadas por comas). Se envían al
+  modelo junto con cada prompt:
+
+  ```bash
+  python scripts/generar_imagenes.py --guion <sesión>/guion.json \
+    --proveedor qwen --referencia "/Users/.../Captura ...14.09.38.png" \
+    --referencia "/Users/.../Captura ...14.09.09.png" --overwrite
+  ```
+
+  También pueden ir en `parametros.imagen_referencia` del guion (string o lista).
+- **Nombrado:** `MM_SS_<slug>.png`. Si una imagen falla, el script deja el detalle en
+  `<sesión>/imagenes/reporte.json`.
 
 ### Paso 4.5 — Aprobar las imágenes con el usuario (obligatorio)
 
-Después de generar las imágenes, **no ensambles todavía**. El script escribe además un **contact
-sheet** que reúne todas las escenas en una sola imagen:
+Tras generar, **no ensambles todavía**. El script genera un **contact sheet** con todas las escenas:
 
 ```bash
-python scripts/generar_imagenes.py --outdir workspace/imagenes --contact-sheet
-# -> workspace/revision/contact_sheet.png
+python scripts/generar_imagenes.py --guion <sesión>/guion.json --contact-sheet
+# -> <sesión>/revision/contact_sheet.png
 ```
 
-1. **Muestra esa imagen al usuario** (`workspace/revision/contact_sheet.png`) y **pregúntale si las
-   imágenes están bien** (estilo, colores, animación de personajes, fondos, consistencia).
-2. **Si responde que sí** → continúa con el Paso 5 (ensamblado).
-3. **Si responde que no** → **pregúntale su feedback concreto** y **regenera** lo que pida:
-   - Cambio global de estilo/colores/fondos → regenera **todas** con su feedback aplicado a cada
-     prompt:
-     ```bash
-     python scripts/generar_imagenes.py --guion workspace/guion.json \
-       --outdir workspace/imagenes --proveedor <gemini|qwen> --overwrite \
-       --estilo "<feedback del usuario>"
-     ```
-   - Solo una escena → regenera esa con `--solo escena-XX --overwrite`.
-   - **Actualiza también el guion** (`prompt_imagen`) si el usuario pide cambiar una escena concreta,
-     para que la descripción coincida con lo que pidió.
-4. Tras regenerar, **vuelve a generar el contact sheet** y **repregunta** al usuario. **Itera hasta
-   que diga que sí**, y recién entonces continúa con el Paso 5.
+1. **Muestra** esa imagen (`<sesión>/revision/contact_sheet.png`) y **pregunta** si las imágenes
+   están bien (estilo, colores, animación, fondos, consistencia).
+2. **Si responde que sí** → continúa al Paso 5.
+3. **Si responde que no** → pregunta su feedback y **regenera**:
+   - Global → `--estilo "<feedback>"` (se suma a cada prompt) u **edita `prompts.txt`** y regenera.
+   - Una escena → `--solo escena-XX --overwrite`.
+   - Cambia también el prompt en el guion o en `prompts.txt` si el usuario pide otra escena concreta.
+4. **Vuelve a generar el contact sheet** y **repregunta**. **Itera hasta el visto bueno**, y recién
+   entonces continúa.
 
-> `--estilo` añade el feedback del usuario (ej. "más colores cálidos, menos texto en pantalla") a
-> todos los prompts sin tocar el guion. Usa `--solo <id>` para regenerar una única escena.
-
-### Paso 5 — Ensamblar el video final (Kinocut MCP / FFmpeg)
-
-**Vía FFmpeg (script, funciona sin MCP):**
+### Paso 5 — Ensamblar el video final (FFmpeg / Kinocut MCP)
 
 ```bash
-python scripts/ensamblar_video.py \
-  --guion workspace/guion.json \
-  --imagedir workspace/imagenes \
-  --audio workspace/audio/narracion.mp3 \
-  --srt workspace/transcripcion/narracion.srt \
-  --outdir workspace/video \
-  --formato vertical
+python scripts/ensamblar_video.py --guion <sesión>/guion.json --formato vertical
+# -> <sesión>/video/final.mp4
 ```
 
-**Vía Kinocut MCP (guardrailed, con `video_*` tools o `kino`):** concatena las imágenes en orden,
-ajusta la duración de cada una a la ventana de su escena, aplica overlay del audio, quema los
-subtítulos (`narracion.srt`), hace resize al formato y corre un quality gate antes del export.
-El resultado equivalente se escribe en `workspace/video/final.mp4`.
-
-**Formato de salida:** `vertical` → 1080x1920 (9:16), `horizontal` → 1920x1080 (16:9). El
-contenedor por defecto es MP4 (H.264 + AAC).
+Concatena imágenes (cada una con la duración real de su escena), superpone la narración y exporta.
+**No quema subtítulos** (ver Límites): deja el `.srt` como sidecar. Formato: `vertical` → 1080x1920
+(9:16), `horizontal` → 1920x1080 (16:9). MP4 H.264+AAC.
 
 ## Revisión post-producción
 
-1. Confirma que `workspace/video/final.mp4` existe y presenta el resultado al usuario
-   (ruta + duración + resolución).
-2. Pregunta si quiere ajustes. Responde a estos casos:
-   - **Corte / re-escena:** ajusta timestamps en `workspace/guion.json` y re-corre ensamblado.
-   - **Reemplazo de imagen:** regenera solo esa escena (`generar_imagenes.py --solo <id>` si está
-     disponible; si no, vuelve a llamar a `generate_image` para esa escena) y re-ensambla.
-   - **Cambio de duración:** ajusta `parametros.duracion_segundos` y las narraciones/escenas
-     correspondientes, regenera audio → transcripción → imágenes → ensamblado.
-   - **Cambio de voz:** repite el Paso 2 con otro `--voz` y re-transcribe y re-ensambla.
-   - **Cambio de estilo (imagen de referencia):** cambia/añade `--referencia` (o
-     `parametros.imagen_referencia`) y regenera las imágenes (`generar_imagenes --overwrite` y
-     re-ensambla).
+1. Confirma `<sesión>/video/final.mp4` y presenta (ruta + duración + resolución).
+2. Pregunta si quiere ajustes:
+   - **Corte / re-escena:** ajusta timestamps en `guion.json` y re-ensambla.
+   - **Reemplazo de imagen:** regenera esa escena (`--solo <id>`) y re-ensambla.
+   - **Cambio de duración:** ajusta `duracion_segundos` y narraciones, regenera audio → transcripción
+     → prompts → imágenes → ensamblado.
+   - **Cambio de voz:** repite el Paso 2 con otro `--voz`.
+   - **Cambio de estilo:** cambia/añade `--referencia` (o edita `prompts.txt`) y regenera imágenes.
 3. Iterar hasta que el usuario dé por bueno el video.
 
 ## Verificación final
 
-- `workspace/audio/narracion.mp3` existe.
-- `workspace/transcripcion/narracion.srt` existe y sus timestamps están ordenados.
-- `workspace/imagenes/` tiene una imagen por escena con nombre `MM_SS_*.png`.
-- **El usuario aprobó las imágenes** (Paso 4.5) — no continúes al ensamblado sin esa aprobación.
-- `workspace/video/final.mp4` existe, con la duración aproximada a `duracion_segundos`.
+- `<sesión>/guion.json` y `<sesión>/prompts.txt` existen.
+- `<sesión>/audio/narracion.mp3` y `<sesión>/transcripcion/narracion.srt` existen (srt sin quemar).
+- `<sesión>/imagenes/` tiene una imagen por escena `MM_SS_*.png`.
+- **El usuario aprobó los prompts** (Paso 3.5) y **las imágenes** (Paso 4.5).
+- `<sesión>/video/final.mp4` existe, con la duración aproximada (el audio real manda).
 - El usuario dio su aprobación final (si no, no cierres — ofrece ajustes).

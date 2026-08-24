@@ -20,10 +20,10 @@ import sys
 from pathlib import Path
 
 try:
-    from guion import (cargar_guion, duracion_objetivo, escenas, mmss)
+    from guion import (cargar_guion, directorio_sesion, duracion_objetivo, escenas, mmss)
 except ImportError:  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from guion import cargar_guion, duracion_objetivo, escenas, mmss  # type: ignore
+    from guion import (cargar_guion, directorio_sesion, duracion_objetivo, escenas, mmss)  # type: ignore
 
 FPS = 30
 DIMS = {"vertical": (1080, 1920), "horizontal": (1920, 1080)}
@@ -170,10 +170,14 @@ def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Ensamblar el video final (FFmpeg).")
     ap.add_argument("--guion", default="workspace/guion.json")
-    ap.add_argument("--imagedir", default="workspace/imagenes")
-    ap.add_argument("--audio", default="workspace/audio/narracion.mp3")
-    ap.add_argument("--srt", default="workspace/transcripcion/narracion.srt")
-    ap.add_argument("--outdir", default="workspace/video")
+    ap.add_argument("--imagedir", default=None,
+                    help="Carpeta de imágenes. Por defecto <carpeta del guion>/imagenes.")
+    ap.add_argument("--audio", default=None,
+                    help="Audio narrado (.mp3). Por defecto <carpeta del guion>/audio/narracion.mp3.")
+    ap.add_argument("--srt", default=None,
+                    help="Subtítulos (.srt). Por defecto <carpeta del guion>/transcripcion/narracion.srt.")
+    ap.add_argument("--outdir", default=None,
+                    help="Carpeta de salida. Por defecto <carpeta del guion>/video.")
     ap.add_argument("--formato", default=None, choices=["vertical", "horizontal"],
                     help="Por defecto toma el formato del guion.")
     ap.add_argument("--salida", default="final.mp4", help="Nombre del archivo final.")
@@ -181,15 +185,19 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         guion = cargar_guion(args.guion)
+        sd = directorio_sesion(args.guion)
+        imagedir = Path(args.imagedir) if args.imagedir else sd / "imagenes"
+        audio = Path(args.audio) if args.audio else sd / "audio" / "narracion.mp3"
+        srt = Path(args.srt) if args.srt else sd / "transcripcion" / "narracion.srt"
+        outdir = Path(args.outdir) if args.outdir else sd / "video"
         formato = args.formato or guion["parametros"]["formato"]
-        out = ensamblar(guion, Path(args.imagedir), Path(args.audio), Path(args.srt),
-                        Path(args.outdir), formato, args.salida)
+        out = ensamblar(guion, imagedir, audio, srt, outdir, formato, args.salida)
     except Exception as e:
         print(f"[ensamblar] Error: {e}", file=sys.stderr)
         return 1
 
     print(f"[ensamblar] OK -> {out}")
-    print(f"[ensamblar] reporte -> {Path(args.outdir) / 'reporte_ensamblado.json'}")
+    print(f"[ensamblar] reporte -> {outdir / 'reporte_ensamblado.json'}")
     return 0
 
 

@@ -19,6 +19,7 @@ from pathlib import Path
 from envutil import (apikey_proveedor, cargar_env, model_imagen_por_defecto,
                      proveedor_imagen_por_defecto, qwen_modelo_por_defecto,
                      voz_por_defecto, whisper_por_defecto)
+from guion import directorio_sesion
 
 cargar_env()
 
@@ -41,16 +42,18 @@ def _ejecutar(paso: str, guion: Path, voz: str, modelo: str, formatos: str,
               proveedor: str | None = None, estilo: str | None = None) -> int:
     script = RAIZ / SCRIPT[paso]
     cmd = [sys.executable, str(script)]
-    # Rutas por defecto del workspace (consistentes con config/settings.example.json).
+    # Cada video vive en su propia carpeta de sesión (workspace/<fecha>/<tema>/), así ningún
+    # video pisa a otro. Todas las rutas derivan de la carpeta del guion.
+    sd = directorio_sesion(guion)
     if paso in ("audio", "imagenes", "ensamblado"):
         cmd += ["--guion", str(guion)]
     if paso == "audio":
-        cmd += ["--outdir", "workspace/audio", "--voz", voz]
+        cmd += ["--outdir", str(sd / "audio"), "--voz", voz]
     elif paso == "transcripcion":
-        cmd += ["--audio", "workspace/audio/narracion.mp3",
-                "--outdir", "workspace/transcripcion", "--model", whisper_model]
+        cmd += ["--audio", str(sd / "audio" / "narracion.mp3"),
+                "--outdir", str(sd / "transcripcion"), "--model", whisper_model]
     elif paso == "imagenes":
-        cmd += ["--outdir", "workspace/imagenes", "--model", modelo]
+        cmd += ["--outdir", str(sd / "imagenes"), "--model", modelo]
         if proveedor:
             cmd += ["--proveedor", proveedor]
         if referencia:
@@ -58,10 +61,10 @@ def _ejecutar(paso: str, guion: Path, voz: str, modelo: str, formatos: str,
         if estilo:
             cmd += ["--estilo", estilo]
     elif paso == "ensamblado":
-        cmd += ["--imagedir", "workspace/imagenes",
-                "--audio", "workspace/audio/narracion.mp3",
-                "--srt", "workspace/transcripcion/narracion.srt",
-                "--outdir", "workspace/video"]
+        cmd += ["--imagedir", str(sd / "imagenes"),
+                "--audio", str(sd / "audio" / "narracion.mp3"),
+                "--srt", str(sd / "transcripcion" / "narracion.srt"),
+                "--outdir", str(sd / "video")]
         if formatos:
             cmd += ["--formato", formatos]
     print(f"\n[->] {paso}: {' '.join(cmd)}")

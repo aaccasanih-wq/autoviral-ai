@@ -36,8 +36,10 @@ Pregunta lo mínimo necesario (no hagas un interrogatorio). Determina:
 - **Idioma** de la narración (por defecto `es`).
 - **Duración objetivo** (lo típico para shorts: 15s–60s).
 - **Público objetivo** y **estilo visual** (cinemático, minimalista, mockumentary, etc.).
-- Si el usuario tiene una **imagen de referencia** (un video animado que le gusta) cuyo estilo
-  quiera replicar, anota su **ruta** (`.png`, `.jpg`, …) para fijar el estilo de forma consistente.
+- Si el usuario tiene **imágenes de referencia** (capturas o imágenes cuyo estilo quiere replicar),
+  anota sus **rutas** (una o varias; pueden estar fuera del proyecto, p. ej. en `~/Desktop/...`).
+  Guárdalas en `parametros.imagen_referencia` como **lista** de rutas (o un string) para fijar el
+  estilo de forma consistente.
 
 ### 2. Generar o refinar la idea
 
@@ -92,11 +94,21 @@ Reglas de redacción:
 ### 5. Mostrar y pedir confirmación explícita
 
 - Presenta el guion completo de forma legible (tabla o listado por escena) **y también** deja
-  listo el archivo `config/guion.json` (o `workspace/guion.json`) con el JSON completo siguiendo
-  el esquema de `config/guion.example.json`.
+  listo el archivo de guion con el JSON completo siguiendo el esquema de `config/guion.example.json`.
+- **Crea la carpeta de sesión del video** y guarda allí el guion. Estructura (cada video en su
+  carpeta para no pisar a otro):
+  ```
+  workspace/
+  └── <fecha DD-MM-AA>/          # carpeta del día (ej. 24-08-26)
+      └── <tema-slug>/           # una carpeta por idea/video (ej. inflacion_y_deuda)
+          └── guion.json
+  ```
+  La fecha es el día en curso en formato `DD-MM-AA` y el slug es corto y sin acentos. **Comunica al
+  usuario la ruta exacta** del guion (p. ej. `workspace/24-08-26/inflacion_y_deuda/guion.json`).
 - Pide **confirmación explícita** al usuario (p. ej. responde "listo"/"confirmo") antes de dar por
   terminada la fase.
-- Si el usuario aprueba, indica que la siguiente fase se ejecuta con `/generacion-video`.
+- Si el usuario aprueba, indica que la siguiente fase se ejecuta con `/generacion-video` sobre esa
+  ruta de guion.
 
 ## Esquema obligatorio de `guion.json`
 
@@ -113,7 +125,7 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
     "idioma": "es",
     "estilo_visual": "cinemático natural, luz suave",
     "publico": "adultos 25-40",
-    "imagen_referencia": ""   // opcional: ruta a un .png/.jpg cuyo estilo animado se replicará
+    "imagen_referencia": []   // opcional: ruta(s) .png/.jpg/.webp cuyo estilo se replicará (string o lista)
   },
   "escenas": [
     {

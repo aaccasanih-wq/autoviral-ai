@@ -47,9 +47,8 @@ def cargar_guion(path: str | Path) -> dict[str, Any]:
              "'parametros.formato' debe ser 'vertical' o 'horizontal'.")
     _require(not params.get("idioma") or isinstance(params["idioma"], str),
              "'parametros.idioma' debe ser un string.")
-    _require(not params.get("imagen_referencia")
-             or (isinstance(params["imagen_referencia"], str) and params["imagen_referencia"].strip()),
-             "'parametros.imagen_referencia' debe ser un string no vacío.")
+    _require(_referencias_ok(params),
+             "'parametros.imagen_referencia' debe ser un string no vacío o una lista de strings.")
 
     escenas = data.get("escenas", [])
     _require(isinstance(escenas, list) and escenas, "Debe existir al menos una escena.")
@@ -87,17 +86,98 @@ def duracion_objetivo(guion: dict[str, Any]) -> float:
     return float(guion["parametros"]["duracion_segundos"])
 
 
-def imagen_referencia(guion: dict[str, Any]) -> str | None:
-    """Ruta de la imagen de referencia de estilo, o ``None`` si no se definió.
+def _referencias_ok(params: dict[str, Any]) -> bool:
+    ref = params.get("imagen_referencia")
+    if ref is None or ref == "":
+        return True
+    if isinstance(ref, str):
+        return bool(ref.strip())
+    if isinstance(ref, list):
+        return all(isinstance(i, str) and i.strip() for i in ref)
+    return False
 
-    Se define opcionalmente en ``parametros.imagen_referencia`` del guion. Sirve para que
-    el estilo visual de un video animado de referencia se mantenga consistente en todas
-    las escenas generadas.
+
+def imagenes_referencia(guion: dict[str, Any]) -> list[str]:
+    """Rutas de las imágenes de referencia de estilo, en orden.
+
+    Se define opcionalmente en ``parametros.imagen_referencia`` del guion (o de forma externa
+    vía ``--referencia``). Admite un string o una lista de strings. Sirve para que el estilo
+    visual de una o varias imágenes de referencia se mantenga consistente en todas las escenas.
     """
-    ref = guion.get("parametros", {}).get("imagen_referencia")
-    if not isinstance(ref, str) or not ref.strip():
-        return None
-    return ref.strip()
+    ref = guion.get("parametros", {}).get("imagen_referencia") or []
+    if isinstance(ref, str):
+        ref = [ref]
+    if not isinstance(ref, list):
+        return []
+    return [r.strip() for r in ref if isinstance(r, str) and r.strip()]
+
+
+def imagen_referencia(guion: dict[str, Any]) -> str | None:
+    """Retrocompatibilidad: primera ruta de referencia, o ``None`` si no hay."""
+    lst = imagenes_referencia(guion)
+    return lst[0] if lst else None
+
+
+def directorio_sesion(guion_path: str | Path) -> Path:
+    """Carpeta de la sesión = carpeta donde vive ``guion.json``.
+
+    El resto de artefactos (audio/, imagenes/, revision/, transcripcion/, video/) cuelgan de ahí.
+    Así cada video (su guion + media) queda aislado en su propia carpeta y no se pisa otro.
+    """
+    return Path(guion_path).resolve().parent
+
+
+def exportar_prompts_txt(guion: dict[str, Any], path: str | Path) -> Path:
+    """Escribe un archivo de prompts editable a mano (``prompts.txt``).
+
+    Formato por escena: una línea ``### ESCENA: <id> (<inicio> - <fin>)`` seguida del prompt
+    en las líneas siguientes. El agente lo usa como input final de generación de imágenes y el
+    usuario puede editarlo a mano.
+    """
+    lines = [
+        "# Prompts de imagen para generar las imágenes. Edita y guarda este archivo; el agente lo usará.",
+        "# Formato: una línea \"### ESCENA: <id> (<inicio> - <fin>)\" y debajo el prompt (varias líneas).",
+        "# Puedes editarlos aquí a mano o pedirle al agente que los ajuste.",
+    ]
+    for esc in guion["escenas"]:
+        lines.append("")
+        lines.append(f"### ESCENA: {esc.get('id')} "
+                     f"({esc.get('inicio_segundos', 0)} - {esc.get('fin_segundos', 0)})")
+        lines.append((esc.get("prompt_imagen") or "").strip())
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return p
+
+
+def cargar_prompts_txt(path: str | Path, guion: dict[str, Any]) -> dict[str, str]:
+    """Lee ``prompts.txt`` y devuelve ``{id_escena: prompt}`` para los que hayan cambiado.
+
+    Si el archivo no existe o una escena no está, se usa el ``prompt_imagen`` del guion.
+    """
+    import re
+
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    texto = p.read_text(encoding="utf-8")
+    current: str | None = None
+    buf: list[str] = []
+    out: dict[str, str] = {}
+    for linea in texto.splitlines():
+        m = re.match(r"\s*###\s*ESCENA:\s*(\S+)", linea)
+        if m:
+            if current is not None:
+                out[current] = "\n".join(buf).strip()
+            current = m.group(1)
+            buf = []
+        elif current is not None:
+            if linea.strip().startswith("#"):
+                continue
+            buf.append(linea)
+    if current is not None:
+        out[current] = "\n".join(buf).strip()
+    return {k: v for k, v in out.items() if v}
 
 
 def mmss(segundos: float | int) -> str:

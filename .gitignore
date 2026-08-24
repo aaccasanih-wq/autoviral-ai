@@ -17,14 +17,17 @@ env/
 .pipenv/
 
 # --- Data / workspace artifacts (generated media + model cache) ---
-workspace/audio/*
-workspace/transcripcion/*
-workspace/imagenes/*
-workspace/video/*
-workspace/revision/*
-workspace/guion.json
-workspace/.cache_hf/
-workspace/.cache_huggingface/
+# Cubre tanto la estructura plana antigua (workspace/audio/...) como la nueva por sesión
+# (workspace/<fecha>/<tema>/audio/...): "**" iguala cero o más directorios.
+workspace/**/audio/*
+workspace/**/transcripcion/*
+workspace/**/imagenes/*
+workspace/**/video/*
+workspace/**/revision/*
+workspace/**/guion.json
+workspace/**/prompts.txt
+workspace/**/.cache_hf/*
+workspace/**/.cache_huggingface/*
 !workspace/**/.gitkeep
 
 # --- MCP / agent caches ---

@@ -44,10 +44,12 @@ import time
 from pathlib import Path
 
 try:
-    from guion import cargar_guion, escenas, guardar_json, imagen_referencia, nombre_imagen
+    from guion import (cargar_guion, cargar_prompts_txt, directorio_sesion, escenas,
+                       exportar_prompts_txt, guardar_json, imagenes_referencia, nombre_imagen)
 except ImportError:  # pragma: no cover - permit run from anywhere via PYTHONPATH
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from guion import cargar_guion, escenas, guardar_json, imagen_referencia, nombre_imagen  # type: ignore
+    from guion import (cargar_guion, cargar_prompts_txt, directorio_sesion, escenas,  # type: ignore
+                       exportar_prompts_txt, guardar_json, imagenes_referencia, nombre_imagen)
 
 from envutil import (apikey_proveedor, cargar_env, model_imagen_por_defecto,
                      proveedor_imagen_por_defecto, qwen_generacion_url, qwen_modelo_por_defecto,
@@ -98,22 +100,27 @@ def _mime_tipo(path: Path) -> str:
             ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp"}.get(ext, "image/png")
 
 
-def _leer_referencia(path: str | None) -> tuple[bytes, str] | None:
-    """Lee la imagen de referencia. Devuelve (bytes, mime) o ``None`` si no hay / falla."""
-    if not path:
-        return None
-    p = Path(path)
-    if not p.is_file():
-        print(f"[imagenes] AVISO: imagen de referencia no encontrada: {p}. "
-              f"Se ignora y se genera sin referencia.", file=sys.stderr)
-        return None
-    try:
-        data = p.read_bytes()
-    except OSError as e:
-        print(f"[imagenes] AVISO: no se pudo leer la referencia {p}: {e}. "
-              f"Se genera sin referencia.", file=sys.stderr)
-        return None
-    return data, _mime_tipo(p)
+def _leer_referencias(paths: list[str]) -> list[tuple[bytes, str]]:
+    """Lee una o más imágenes de referencia (pueden estar fuera del proyecto).
+
+    Devuelve una lista de ``(bytes, mime)``. Si una ruta no existe o no se puede leer,
+    se avisa y se omite (las que sí existen se siguen usando).
+    """
+    out: list[tuple[bytes, str]] = []
+    for path in paths:
+        p = Path(path)
+        if not p.is_file():
+            print(f"[imagenes] AVISO: imagen de referencia no encontrada: {p}. Se omite.",
+                  file=sys.stderr)
+            continue
+        try:
+            data = p.read_bytes()
+        except OSError as e:
+            print(f"[imagenes] AVISO: no se pudo leer la referencia {p}: {e}. Se omite.",
+                  file=sys.stderr)
+            continue
+        out.append((data, _mime_tipo(p)))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +128,7 @@ def _leer_referencia(path: str | None) -> tuple[bytes, str] | None:
 # ---------------------------------------------------------------------------
 
 def _generar_gemini(client, modelo: str, prompt: str, ratio: str, out: Path,
-                    referencia: tuple[bytes, str] | None = None) -> bool:
+                    referencias: list[tuple[bytes, str]] | None = None) -> bool:
     """Genera una imagen con Gemini (Nano Banana) y la guarda en ``out``."""
     from google.genai import types
 
@@ -133,8 +140,8 @@ def _generar_gemini(client, modelo: str, prompt: str, ratio: str, out: Path,
         pass
 
     contents: list = []
-    if referencia:
-        contents.append(types.Part.from_bytes(data=referencia[0], mime_type=referencia[1]))
+    for data, mime in (referencias or []):
+        contents.append(types.Part.from_bytes(data=data, mime_type=mime))
     contents.append(prompt)
 
     try:
@@ -215,15 +222,15 @@ def _descargar_qwen(url: str) -> bytes | None:
 
 
 def _generar_qwen(apikey: str, modelo: str, prompt: str, size: str, out: Path,
-                  referencia: tuple[bytes, str] | None = None) -> bool:
+                  referencias: list[tuple[bytes, str]] | None = None) -> bool:
     """Genera una imagen con Qwen vía DashScope y la guarda en ``out``."""
     import urllib.error
     import urllib.request
 
     content: list[dict] = []
-    if referencia:
-        b64 = base64.b64encode(referencia[0]).decode()
-        content.append({"image": f"data:{referencia[1]};base64,{b64}"})
+    for data, mime in (referencias or []):
+        b64 = base64.b64encode(data).decode()
+        content.append({"image": f"data:{mime};base64,{b64}"})
     content.append({"text": prompt})
 
     payload = {
@@ -279,10 +286,10 @@ def _generar_qwen(apikey: str, modelo: str, prompt: str, size: str, out: Path,
 # ---------------------------------------------------------------------------
 
 def _generar(proveedor: str, client, apikey: str | None, modelo: str, prompt: str,
-             ratio: str, out: Path, referencia: tuple[bytes, str] | None = None) -> bool:
+             ratio: str, out: Path, referencias: list[tuple[bytes, str]] | None = None) -> bool:
     if proveedor == "gemini":
-        return _generar_gemini(client, modelo, prompt, ratio, out, referencia)
-    return _generar_qwen(apikey or "", modelo, prompt, _ratio_a_size(ratio), out, referencia)
+        return _generar_gemini(client, modelo, prompt, ratio, out, referencias)
+    return _generar_qwen(apikey or "", modelo, prompt, _ratio_a_size(ratio), out, referencias)
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +338,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Generar imágenes por escena (Gemini / Qwen·Alibaba).")
     ap.add_argument("--guion", default="workspace/guion.json", help="Ruta al guion.json.")
-    ap.add_argument("--outdir", default="workspace/imagenes", help="Carpeta de salida.")
+    ap.add_argument("--outdir", default=None,
+                    help="Carpeta de salida. Por defecto <carpeta del guion>/imagenes.")
     ap.add_argument("--proveedor", default=proveedor_por_defecto, choices=["gemini", "qwen"],
                     help="Proveedor de imágenes (default: IMAGEN_PROVEEDOR, o 'gemini').")
     ap.add_argument("--model", default=None,
@@ -344,24 +352,43 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--estilo", default=None,
                     help="Ajuste global de estilo/feedback del usuario (p. ej. 'más colores "
                          "cálidos, estilo anime, fondos urbanos'). Se añade a todos los prompts.")
-    ap.add_argument("--referencia", default=None,
+    ap.add_argument("--referencia", action="append", default=None,
                     help="Ruta a una imagen de referencia (.png/.jpg/...) cuyo estilo se usará de "
-                         "forma consistente en todas las escenas. Si no se pasa, se usa "
-                         "parametros.imagen_referencia del guion (si existe).")
+                         "forma consistente en todas las escenas. Se puede repetir para varias "
+                         "imágenes, o separar con comas. Si no se pasa, se usa "
+                         "parametros.imagen_referencia del guion (lista o string).")
     ap.add_argument("--contact-sheet", action="store_true",
                     help="Solo construye el montaje de las imágenes existentes y sale, "
-                         "sin regenerar nada. Ruta: <workspace>/revision/contact_sheet.png.")
+                         "sin regenerar nada. Ruta: <session>/revision/contact_sheet.png.")
+    ap.add_argument("--export-prompts", action="store_true",
+                    help="Escribe el archivo de prompts editable (prompts.txt) a partir del guion "
+                         "y sale, sin generar imágenes. Es para que el usuario revise/edite los "
+                         "prompts antes de generar.")
+    ap.add_argument("--prompts-file", default=None,
+                    help="Ruta al archivo de prompts editable. Por defecto <carpeta del guion>/prompts.txt. "
+                         "Si existe, se usan sus prompts como input final en vez de los del guion.")
     args = ap.parse_args(argv)
 
     proveedor = (args.proveedor or proveedor_por_defecto).strip().lower()
-    outdir = Path(args.outdir)
+
+    guion = cargar_guion(args.guion)
+    session = directorio_sesion(args.guion)
+    outdir = Path(args.outdir) if args.outdir else session / "imagenes"
     outdir.mkdir(parents=True, exist_ok=True)
+
+    # Archivo de prompts editable por el usuario (antes de generar las imágenes).
+    prompts_path = Path(args.prompts_file) if args.prompts_file else session / "prompts.txt"
+    if args.export_prompts:
+        p = exportar_prompts_txt(guion, prompts_path)
+        print(f"[imagenes] Prompts exportados -> {p}")
+        print("[imagenes] El usuario puede editar ese archivo; luego vuelve a "
+              "generar para usarlo como input.")
+        return 0
 
     # Modo exclusivo: contact sheet (no regenera).
     if args.contact_sheet:
         return 0 if generar_contact_sheet(outdir, _ruta_contact_sheet(outdir)) else 1
 
-    guion = cargar_guion(args.guion)
     ratio = args.aspect or _formato_a_ratio(guion["parametros"]["formato"])
     modelo = args.model or (qwen_modelo_por_defecto() if proveedor == "qwen" else MODELO_DEF)
     apikey = args.apikey or apikey_proveedor(proveedor)
@@ -372,11 +399,23 @@ def main(argv: list[str] | None = None) -> int:
               f"{'QWEN_API_KEY' if proveedor == 'qwen' else 'GEMINI_API_KEY'}.", file=sys.stderr)
         return 2
 
-    # Imagen de referencia: prioridad al argumento, luego al campo del guion.
-    referencia = _leer_referencia(args.referencia or imagen_referencia(guion))
-    if args.referencia or imagen_referencia(guion):
-        print(f"[imagenes] Estilo anclado a imagen de referencia: "
-              f"{args.referencia or imagen_referencia(guion)}")
+    # Prompts de imagen: si el usuario editó prompts.txt, se usan esos; si no, los del guion.
+    # Siempre garantizamos que el archivo exista para que el usuario pueda editarlo.
+    if not prompts_path.is_file():
+        exportar_prompts_txt(guion, prompts_path)
+        print(f"[imagenes] Prompts de imagen -> {prompts_path} (editables a mano).")
+    prompts_editados = cargar_prompts_txt(prompts_path, guion)
+    if prompts_editados:
+        print(f"[imagenes] Usando {len(prompts_editados)} prompts editados de {prompts_path}.")
+
+    # Imágenes de referencia: prioridad a las pasadas por CLI, luego a las del guion.
+    refs_cli: list[str] = []
+    for v in (args.referencia or []):
+        refs_cli += [x.strip() for x in v.split(",") if x.strip()]
+    referencias = _leer_referencias(refs_cli or imagenes_referencia(guion))
+    if refs_cli or imagenes_referencia(guion):
+        print(f"[imagenes] Estilo anclado a {len(referencias)} imagen(es) de referencia: "
+              f"{refs_cli or imagenes_referencia(guion)}")
 
     gemini_client = None
     if proveedor == "gemini":
@@ -408,11 +447,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[imagenes] {idx}/{len(escs)} existe, omitido: {out.name}")
             ok += 1
             continue
-        prompt = f"{esc['prompt_imagen']}. Aspect ratio {ratio}. High quality, crisp details."
+        # Prompt final: el editado por el usuario (prompts.txt) si existe; si no, el del guion.
+        base_prompt = prompts_editados.get(esc["id"]) or esc["prompt_imagen"]
+        prompt = f"{base_prompt}. Aspect ratio {ratio}. High quality, crisp details."
         if args.estilo:
             prompt += f"\nAjuste solicitado por el usuario: {args.estilo}"
         throttle.esperar()  # respetar el RPM antes de cada petición
-        if _generar(proveedor, gemini_client, apikey, modelo, prompt, ratio, out, referencia):
+        if _generar(proveedor, gemini_client, apikey, modelo, prompt, ratio, out, referencias):
             print(f"[imagenes] {idx}/{len(escs)} ({proveedor}/{modelo}) -> {out.name}")
             ok += 1
         else:

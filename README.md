@@ -129,42 +129,65 @@ cp .env.example .env      # una sola vez
 
 ## Uso del pipeline
 
+### Estructura de carpetas por video
+
+Cada video vive en su **propia carpeta de sesión**, para que un video no pise a otro:
+
+```
+workspace/
+└── 24-08-26/                     # carpeta del día (DD-MM-AA)
+    └── inflacion_y_deuda/        # una carpeta por idea/video (slug sin acentos)
+        ├── guion.json            # el guion confirmado
+        ├── prompts.txt           # prompts de imagen editables a mano
+        ├── audio/ transcripcion/ imagenes/ revision/ video/
+```
+
+El **directorio de sesión es la carpeta donde está `guion.json`**. Todos los scripts derivan sus
+rutas de ahí al pasarles `--guion <sesión>/guion.json`, así no hay que descubrir cada carpeta con
+tool calls.
+
 ### Fase 1 — Crear el guion
 
 Carga la skill de ideación y describe tu idea (o pide propuestas). La skill refina, fija parámetros
-(duración, formato, idioma, estilo, público) y escribe el guion en `workspace/guion.json`
-(respetando el esquema de `config/guion.example.json`). Pedirá tu confirmación explícita.
+(duración, formato, idioma, estilo, público) y **crea la carpeta de sesión**
+(`workspace/<fecha>/<tema>/`) y escribe allí `guion.json` (respetando el esquema de
+`config/guion.example.json`). Pedirá tu confirmación explícita y te dirá la ruta exacta.
 
 ### Fase 2 — Producir el video
 
-Carga la skill de producción con el guion ya confirmado. El agente ejecuta las etapas en orden
-**sin intervenir** (ver el principio de "mínima intervención" en la skill) y te presenta el video
-final:
+Carga la skill de producción con el guion ya confirmado (pásale `--guion <sesión>/guion.json`). En
+lugar de `workspace/...`, todas las rutas se derivan de la carpeta de la sesión:
 
 ```bash
-python scripts/verificar_entorno.py            # 1. chequeo
-python scripts/generar_audio.py                # 2. audio (edge-tts)
-python scripts/transcribir.py                  # 3. .srt (faster-whisper)
-python scripts/generar_imagenes.py             # 4a. imágenes (lee la clave de .env)
-python scripts/generar_imagenes.py --contact-sheet   # 4b. montaje para revisar las imágenes
-python scripts/ensamblar_video.py              # 5. video (FFmpeg) — tras aprobar las imágenes
+python scripts/verificar_entorno.py                             # 1. chequeo
+python scripts/generar_audio.py --guion <sesión>/guion.json     # 2. audio (edge-tts)
+python scripts/transcribir.py --audio <sesión>/audio/narracion.mp3 \
+  --outdir <sesión>/transcripcion                               # 3. .srt (faster-whisper)
+python scripts/generar_imagenes.py --guion <sesión>/guion.json --export-prompts  # 4a. prompts editables
+python scripts/generar_imagenes.py --guion <sesión>/guion.json  # 4b. imágenes (usa prompts.txt si existe)
+python scripts/generar_imagenes.py --guion <sesión>/guion.json --contact-sheet  # 4c. montaje
+python scripts/ensamblar_video.py --guion <sesión>/guion.json   # 5. video (FFmpeg) — tras aprobar
 ```
 
-O todo de una vez con el orquestador (lee los valores por defecto de `.env`):
+O el orquestador:
 
 ```bash
-python scripts/pipeline.py                     # ejecuta las 4 etapas
-python scripts/pipeline.py --pasos ensamblado  # solo reensamblar (si ya hay media)
+python scripts/pipeline.py --guion <sesión>/guion.json
+python scripts/pipeline.py --guion <sesión>/guion.json --pasos ensamblado
 ```
 
+**Dos aprobaciones obligatorias** antes de ensamblar (ambas las consulta la skill mediante el
+contact sheet / panel visual):
 
-Tras generar las imágenes, el flujo **no** continúa solo: la skill pide al usuario que **apruebe**
-las imágenes (estilo, colores, animación, fondos) usando el **contact sheet**
-(`workspace/revision/contact_sheet.png`). Si no lo aprueba, pregunta el feedback y **regenera** las
-imágenes (con `--estilo "<feedback>"` para todas o `--solo escena-XX` para una) hasta obtener el
-visto bueno, y **recién entonces** ensambla. El video final queda en `workspace/video/final.mp4`.
-La skill presenta el resultado y permite ajustes post-producción (cortes, reemplazo de escena,
-cambio de duración o de voz).
+1. **Prompts de imagen** (`<sesión>/prompts.txt`): el agente los muestra y pregunta si están bien.
+   Si no, los ajusta él o **el usuario los edita a mano** en `prompts.txt` (recomendado: es un txt
+   fácil de editar).
+2. **Imágenes** (`<sesión>/revision/contact_sheet.png`): el agente muestra el montaje y pregunta
+   por estilo/colores/fondos. Si no hay visto bueno, regenera (con `--estilo` o `--solo escena-XX`).
+
+El video final queda en `<sesión>/video/final.mp4`. Los **subtítulos NO se queman** sobre el video
+(este ffmpeg no tiene libass; faltaría descargar otro) — el `.srt` queda como sidecar y la skill no
+pregunta al respecto.
 
 > **Imágenes vía MCP:** si prefieres que el agente llame a Gemini a través del servidor MCP (en
 > lugar del script CLI), conecta `.mcp.json` y usa la herramienta `generate_image` por escena
@@ -194,15 +217,18 @@ python scripts/pipeline.py --proveedor qwen --model qwen-image-3.0
 
 ### Estilo consistente con imagen de referencia
 
-Si viste un video animado que te gusta y quieres replicar su **estilo**, puedes anclarlo en todo el
-pipeline con una **imagen de referencia**. El script la envía a Gemini como input junto con cada
-`prompt_imagen`, de modo que **todas** las escenas heredan ese estilo.
+Si viste una imagen o captura cuyo **estilo** quieres replicar, puedes anclarlo en todo el pipeline
+con una o varias **imágenes de referencia**. El script las envía al modelo generador como input
+junto con cada prompt, de modo que **todas** las escenas heredan ese estilo.
 
-- En el guion: `parametros.imagen_referencia` (ruta al `.png/.jpg/...`, idealmente dentro del
-  proyecto, p. ej. `workspace/referencia.png`).
-- Por flag (tiene prioridad) al ejecutar imágenes:
+- **Pueden estar fuera del proyecto** (p. ej. en `~/Desktop/Captura....png`); el agente lee la ruta
+  y la manda al modelo igualmente.
+- En el guion: `parametros.imagen_referencia` como **lista** de rutas (o un string): `["./ref.png"]`.
+- Por flag (tiene prioridad) al ejecutar imágenes — se puede repetir o separar por comas:
   ```bash
-  python scripts/pipeline.py --referencia workspace/referencia.png
+  python scripts/generar_imagenes.py --guion <sesión>/guion.json --overwrite \
+    --referencia "/Users/.../Captura ...14.09.38.png" \
+    --referencia "/Users/.../Captura ...14.09.09.png"
   ```
 - Es **opcional**: si no se define, el pipeline genera con los prompts textuales sin referencia.
 

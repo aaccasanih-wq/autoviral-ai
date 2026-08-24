@@ -48,11 +48,14 @@ cat <<'EOF'
 
 ✓ Listo. Siguientes pasos:
 
-  1) Edita .env y pega tu GEMINI_API_KEY (https://aistudio.google.com/apikey).
-     Si usarás el free tier de imágenes, pon NANO_BANANA_MODEL=gemini-2.5-flash-image.
+  1) Edita .env y pega tu API key de imágenes:
+       gemini -> GEMINI_API_KEY  (https://aistudio.google.com/apikey)
+       qwen   -> QWEN_API_KEY + QWEN_API_HOST (Alibaba Cloud DashScope)
+     Elige el proveedor activo con IMAGEN_PROVEEDOR=gemini|qwen.
   2) Activa el entorno:   source .venv/bin/activate
-  3) Crea un guion con la Fase 1 (/ideacion-video) y guárdalo en workspace/guion.json.
-  4) Produce el video:    python scripts/pipeline.py
+  3) Crea un guion con la Fase 1 (/ideacion-video); se guarda en
+       workspace/<fecha DD-MM-AA>/<tema>/guion.json  (una carpeta por video).
+  4) Produce el video:    python scripts/pipeline.py --guion workspace/<fecha>/<tema>/guion.json
 
   Más detalle en README.md.
 EOF

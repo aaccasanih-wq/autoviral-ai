@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from guion import cargar_guion, escenas, guardar_json
+from guion import cargar_guion, directorio_sesion, escenas, guardar_json
 from envutil import cargar_env, voz_por_defecto
 
 cargar_env()
@@ -83,7 +83,8 @@ def _concatenar_audio(entradas: list[Path], salida: Path) -> bool:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Generar audio narrado por escena (edge-tts).")
     ap.add_argument("--guion", default="workspace/guion.json", help="Ruta al guion.json.")
-    ap.add_argument("--outdir", default="workspace/audio", help="Carpeta de salida.")
+    ap.add_argument("--outdir", default=None,
+                    help="Carpeta de salida. Por defecto <carpeta del guion>/audio.")
     ap.add_argument("--voz", default=VOZ_DEF, help="Voz de edge-tts.")
     ap.add_argument("--rate", default="+0%", help="Velocidad de la voz (p. ej. -10%% o +5%%).")
     args = ap.parse_args(argv)
@@ -94,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[audio] Error: {e}", file=sys.stderr)
         return 1
 
-    outdir = Path(args.outdir)
+    outdir = Path(args.outdir) if args.outdir else directorio_sesion(args.guion) / "audio"
     outdir.mkdir(parents=True, exist_ok=True)
 
     escs = escenas(guion)
