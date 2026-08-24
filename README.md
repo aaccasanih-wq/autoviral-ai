@@ -117,7 +117,8 @@ cp .env.example .env      # una sola vez
 | `NANO_BANANA_MODEL` | Modelo de imagen Gemini | `gemini-3.1-flash-image-preview` |
 | `QWEN_API_KEY` | Clave de imágenes Alibaba Qwen (si `IMAGEN_PROVEEDOR=qwen`) | *(vacía)* |
 | `QWEN_API_HOST` | Host DashScope de tu workspace Qwen | `dashscope.aliyuncs.com` |
-| `QWEN_IMAGE_MODEL` | Modelo Qwen | `qwen-image-3.0` |
+| `QWEN_IMAGE_MODEL` | Modelo Qwen | `qwen-image-2.0` |
+| `QWEN_RPM` | Máx. peticiones/min a Qwen (el script las espacia) | `2` (free tier `qwen-image-2.0`; `3.0` → `5`) |
 | `EDGE_TTS_VOZ` | Voz de edge-tts | `es-ES-ElviraNeural` |
 | `WHISPER_MODEL` | Modelo de whisper | `small` |
 
@@ -213,8 +214,15 @@ Cada skill es un bundle `<nombre>/SKILL.md` que define el comportamiento del age
 
 ### Claude Code / OpenCode
 
-En **Claude Code (CLI)** escribe `/ideacion-video` o `/generacion-video`. En **OpenCode**, el
-mecanismo es similar (`/nombre`). Las skills viven en `skills/`.
+Claude Code y OpenCode **no** leen la carpeta `skills/` ni las raíces DSH: descubren las skills en
+**`.claude/skills/<nombre>/SKILL.md`** (proyecto) o **`~/.claude/skills/<nombre>/SKILL.md`**
+(global). Este repo ya incluye copias en `.claude/skills/` (proyecto, versionable) y el script las
+sincroniza también a `~/.claude/skills/`.
+
+Para usarlas en Claude Code, ábrelo en este directorio (o `cd` a él). Al pedir algo que encaje con
+la `description` de la skill (p. ej. "genera el video a partir del guion"), Claude Code la carga
+automáticamente y sigue su procedimiento (que ya le indica que tiene acceso a Bash, dónde está el
+proyecto y que use `.venv`).
 
 ### DeepSeek Harness
 

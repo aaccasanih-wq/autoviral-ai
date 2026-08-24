@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Sincroniza las skills canonicas (skills/<nombre>/SKILL.md) hacia las rutas que
-# DeepSeek Harness / agentes descubren. Mantiene las copias identicas a la fuente.
+# Sincroniza las skills canonicas (skills/<nombre>/SKILL.md) hacia las rutas que los distintos
+# agentes descubren. Mantiene las copias identicas a la fuente.
 #
 # Rutas destino:
-#   - Proyecto: .dsh/skills, .agents/skills   (versionables, dentro del repo)
-#   - Usuario:  ~/.dsh/skills, ~/.agents/skills (globales, fuera del repo)
+#   - DeepSeek Harness (proyecto, versionable): .dsh/skills, .agents/skills
+#   - DeepSeek Harness (usuario, global):       ~/.dsh/skills, ~/.agents/skills
+#   - Claude Code (proyecto, versionable):      .claude/skills
+#   - Claude Code (usuario, global):            ~/.claude/skills
 #
 # Uso:  bash scripts/copiar_skills.sh
 set -euo pipefail
@@ -18,6 +20,8 @@ DESTINOS=(
   "$RAIZ/.agents/skills"
   "$HOME/.dsh/skills"
   "$HOME/.agents/skills"
+  "$RAIZ/.claude/skills"
+  "$HOME/.claude/skills"
 )
 
 for n in "${NOMBRES[@]}"; do

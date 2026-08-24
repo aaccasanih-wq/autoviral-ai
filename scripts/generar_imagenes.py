@@ -40,6 +40,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -49,7 +50,8 @@ except ImportError:  # pragma: no cover - permit run from anywhere via PYTHONPAT
     from guion import cargar_guion, escenas, guardar_json, imagen_referencia, nombre_imagen  # type: ignore
 
 from envutil import (apikey_proveedor, cargar_env, model_imagen_por_defecto,
-                     proveedor_imagen_por_defecto, qwen_generacion_url, qwen_modelo_por_defecto)
+                     proveedor_imagen_por_defecto, qwen_generacion_url, qwen_modelo_por_defecto,
+                     qwen_rpm)
 
 cargar_env()
 
@@ -57,6 +59,27 @@ MODELO_DEF = model_imagen_por_defecto()  # por defecto gemini-3.1-flash-image-pr
 
 # Tamaño de celda del contact sheet (mantiene proporción 9:16 vertical).
 CS = (480, 854)
+
+
+class _Throttle:
+    """Limita las peticiones a ``rpm`` por minuto (mínimo un intervalo entre cada una).
+
+    Usado para no exceder el límite del free tier de Alibaba (``QWEN_RPM``): si con 5 escenas
+    el límite es 2/min, se espera ~30 s entre peticiones (60/rpm).
+    """
+
+    def __init__(self, rpm: int) -> None:
+        self._intervalo = (60.0 / rpm) if rpm and rpm > 0 else 0.0
+        self._ultima: float = 0.0
+
+    def esperar(self) -> None:
+        if self._intervalo <= 0:
+            return
+        ahora = time.monotonic()
+        falta = self._intervalo - (ahora - self._ultima)
+        if falta > 0:
+            time.sleep(falta)
+        self._ultima = time.monotonic()
 
 
 def _formato_a_ratio(formato: str) -> str:
@@ -165,6 +188,15 @@ def _extraer_img_qwen(data: dict) -> str | None:
     return None
 
 
+def _retry_after(exc) -> float:
+    """Segundos a esperar según la cabecera ``Retry-After`` de un error 429 (o 30 por defecto)."""
+    val = exc.headers.get("Retry-After") if getattr(exc, "headers", None) else None
+    try:
+        return float(val) if val else 30.0
+    except (ValueError, TypeError):
+        return 30.0
+
+
 def _descargar_qwen(url: str) -> bytes | None:
     """Baja la imagen: decodifica data-URI o descarga la URL firmada de OSS."""
     if url.startswith("data:"):
@@ -204,15 +236,27 @@ def _generar_qwen(apikey: str, modelo: str, prompt: str, size: str, out: Path,
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {apikey}"},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            data = json.loads(resp.read().decode("utf-8", "replace"))
-    except urllib.error.HTTPError as e:
-        print(f"[imagenes] Error Qwen {e.code}: {e.read().decode('utf-8', 'replace')[:400]}",
-              file=sys.stderr)
-        return False
-    except Exception as e:
-        print(f"[imagenes] Error de red con Qwen: {e}", file=sys.stderr)
+    data = None
+    for intento in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode("utf-8", "replace"))
+                break
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and intento < 2:
+                espera = _retry_after(e)
+                print(f"[imagenes] Límite de peticiones Qwen (429); reintento en {espera:.0f}s ...",
+                      file=sys.stderr)
+                time.sleep(espera)
+                continue
+            print(f"[imagenes] Error Qwen {e.code}: {e.read().decode('utf-8', 'replace')[:400]}",
+                  file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"[imagenes] Error de red con Qwen: {e}", file=sys.stderr)
+            return False
+    if data is None:
+        print("[imagenes] Qwen: reintentos agotados tras el límite de peticiones.", file=sys.stderr)
         return False
 
     img_url = _extraer_img_qwen(data)
@@ -349,6 +393,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[imagenes] No hay escenas que regenerar (solo={args.solo}).", file=sys.stderr)
         return 1
 
+    # Límite de peticiones por minuto (free tier de Alibaba; QWEN_RPM). Espacia las peticiones
+    # para no superar el máximo (p. ej. 2/min en qwen-image-2.0, 5/min en qwen-image-3.0).
+    rpm = qwen_rpm()
+    throttle = _Throttle(rpm)
+    if proveedor == "qwen" and rpm > 0:
+        print(f"[imagenes] Límite de peticiones activado: {rpm}/min (QWEN_RPM).")
+
     ok = 0
     fallidas: list[str] = []
     for idx, esc in enumerate(escs, 1):
@@ -360,6 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         prompt = f"{esc['prompt_imagen']}. Aspect ratio {ratio}. High quality, crisp details."
         if args.estilo:
             prompt += f"\nAjuste solicitado por el usuario: {args.estilo}"
+        throttle.esperar()  # respetar el RPM antes de cada petición
         if _generar(proveedor, gemini_client, apikey, modelo, prompt, ratio, out, referencia):
             print(f"[imagenes] {idx}/{len(escs)} ({proveedor}/{modelo}) -> {out.name}")
             ok += 1

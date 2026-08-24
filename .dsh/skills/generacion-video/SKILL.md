@@ -9,14 +9,24 @@ whenToUse: El usuario ya tiene un guion confirmado (de /ideacion-video o pegado)
 Tu objetivo es ejecutar el pipeline técnico de forma **autónoma** usando el guion confirmado, y
 entregar un **video final** que el usuario pueda revisar y ajustar.
 
-## Conector Desktop Commander
+## Acceso a herramientas y entorno
 
-Tienes habilitado el conector **Desktop Commander**, que te permite **ejecutar código y comandos
-bash** en el equipo del usuario (no solo responder en texto). Úsalo para correr los scripts del
-pipeline (todos los bloques de comandos de esta skill) y para verificar el entorno
-(`verificar_entorno.py`), mirar metadatos (`ffprobe`) o inspeccionar los artefactos generados en
-`workspace/`. Cuando ejecutes un comando, lee su salida antes de continuar y respeta el principio de
-mínima intervención (abajo) para no gastar tokens de más.
+**Tienes acceso a ejecutar código/comandos en la laptop del usuario** (es la única forma de producir
+el video). En **Claude Desktop** se habilita vía el conector **Desktop Commander**; en **Claude Code
+/ OpenCode** ya tienes la tool **Bash/Shell** directamente — **úsala**, no asumas que no tienes
+acceso y no pidas permiso.
+
+- **El proyecto vive en** `/Users/axelaaronccasanihuachua/Desktop/Data_Science/AutoViral_AI`.
+  Antes de correr cualquier comando, `cd` a ese directorio (Desktop Commander / Claude Code suelen
+  arrancar en otra carpeta). Verificá que estás ahí con `ls scripts/pipeline.py`.
+- **Usa el virtualenv del proyecto**: los scripts corren mejor con `.venv/bin/python`
+  (ya tiene `edge-tts`, `faster-whisper`, `google-genai`, `python-dotenv`, `mutagen`). Si esa ruta
+  no existe, corre `bash setup.sh` primero.
+- **La API key del proveedor activo está en `.env`** (gitignored), no hace falta pasarla por
+  terminal. El proveedor y el modelo se leen de `IMAGEN_PROVEEDOR`, `QWEN_IMAGE_MODEL`, etc.
+- Úsalo para correr los scripts del pipeline, verificar el entorno (`verificar_entorno.py`), mirar
+  metadatos (`ffprobe`) o inspeccionar los artefactos en `workspace/`. Cuando ejecutes un comando,
+  lee su salida antes de continuar y respeta el principio de mínima intervención (abajo).
 
 ## Límites de esta skill (NUNCA)
 
@@ -118,6 +128,12 @@ QWEN_API_KEY=... QWEN_API_HOST=ws-emxfi567101fw62r.ap-southeast-1.maas.aliyuncs.
 ```
 
 Genera automáticamente `workspace/imagenes/MM_SS_descripcion.png` para cada escena.
+
+> **Límite de peticiones (free tier de Alibaba):** el script **espacia** las peticiones para no
+> superar `QWEN_RPM` (por defecto **2/min**, el límite de `qwen-image-2.0`; si usas
+> `qwen-image-3.0` sube a 5). Si el usuario pide "ahora no", o quiere acelerar/cambiar el límite,
+> ajusta `QWEN_RPM` en `.env` (p. ej. `QWEN_RPM=5`). Con 5 escenas y 2/min, la generación tarda
+> ~2 min; es normal, no es un cuelgue.
 
 **Estilo consistente (imagen de referencia).** Si el guion tiene `parametros.imagen_referencia`
 (o quieres fijarlo con `--referencia`), el estilo animado de esa imagen se usa en **todas** las

@@ -71,6 +71,19 @@ def qwen_api_host() -> str:
     return env_o("QWEN_API_HOST") or env_o("DASHSCOPE_API_HOST") or "dashscope.aliyuncs.com"
 
 
+def qwen_rpm() -> int:
+    """Máximo de peticiones por minuto al proveedor Qwen.
+
+    Default **2** (límite del free tier de ``qwen-image-2.0``; ``qwen-image-3.0`` permite 5).
+    Modificable en ``.env`` (``QWEN_RPM``) por el usuario o por el agente a pedido.
+    El script espacia las peticiones para no superar este límite.
+    """
+    try:
+        return int(env_o("QWEN_RPM", "2") or "2")
+    except (TypeError, ValueError):
+        return 2
+
+
 def qwen_generacion_url() -> str:
     """Endpoint DashScope multimodal-generation para Qwen image models."""
     return f"https://{qwen_api_host()}/api/v1/services/aigc/multimodal-generation/generation"
