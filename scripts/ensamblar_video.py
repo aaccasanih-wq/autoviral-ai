@@ -360,14 +360,31 @@ def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
         print(f"[ensamblar] Aviso: sin imagen para {', '.join(faltantes)} (placeholder negro).",
               file=sys.stderr)
 
-    # 2) Unir segmentos: xfade si hay transiciones (y ffmpeg las soporta); si no, concat clásico.
-    transiciones = [(efectos[i]["transicion"], efectos[i]["transicion_duracion"])
-                    for i in range(len(escs) - 1)]
-    usa_xfade = (len(escs) > 1 and any(t[1] > 0 for t in transiciones)
+    # 2) Unir segmentos: xfade si hay transiciones válidas (y ffmpeg las soporta); si no, concat clásico.
+    # Nota: ffmpeg 7.1 (imageio-ffmpeg con libass) es estricto con xfade: transition=none no existe.
+    # Por eso filtramos "none" o duraciones 0 para no generar xfade inválido.
+    transiciones_raw = [(efectos[i]["transicion"], efectos[i]["transicion_duracion"])
+                        for i in range(len(escs) - 1)]
+    # Normalizar: "none" o duración 0 => hard cut (no xfade). Solo xfade si hay al menos una válida.
+    transiciones = []
+    for nombre, dur in transiciones_raw:
+        if nombre == "none" or dur <= 0:
+            transiciones.append(("none", 0.0))
+        else:
+            transiciones.append((nombre, dur))
+    # xfade solo si hay al menos una transición real y ffmpeg la soporta
+    usa_xfade = (len(escs) > 1 and any(t[0] != "none" and t[1] > 0 for t in transiciones)
                  and _soporta_filtro("xfade"))
-    if len(escs) > 1 and any(t[1] > 0 for t in transiciones) and not _soporta_filtro("xfade"):
+    if len(escs) > 1 and any(t[0] != "none" and t[1] > 0 for t in transiciones) and not _soporta_filtro("xfade"):
         print("[ensamblar] Aviso: este ffmpeg no soporta 'xfade'; uno sin transiciones.",
               file=sys.stderr)
+    # Si alguna transición es "none", el xfade no puede representar un hard cut directamente.
+    # En ese caso, usamos concat simple para evitar error de ffmpeg 7.1; se pierde el xfade
+    # pero el video sigue correcto. Una futura mejora es implementar xfade mixto.
+    if usa_xfade and any(t[0] == "none" for t in transiciones):
+        print("[ensamblar] Aviso: transiciones mixtas con 'none' (hard cut) no se pueden hacer con xfade en ffmpeg 7.1; "
+              "usando concat simple (cortes secos) para todas las escenas.", file=sys.stderr)
+        usa_xfade = False
     base = outdir / "_base.mp4"
     if usa_xfade:
         _unir_con_transiciones(segmentos, transiciones, durs, base)

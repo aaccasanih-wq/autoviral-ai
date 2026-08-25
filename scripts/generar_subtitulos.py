@@ -169,7 +169,8 @@ def _hook_automatico(guion, max_len: int = 48) -> str:
         return ""
 
 # Plantilla ASS — PlayRes para vertical 1080x1920 (coordenadas = píxeles)
-ASS_HEADER = """[Script Info]
+# Placeholders con llaves dobles para evitar colisión con format: se reemplaza vía str.replace
+ASS_HEADER_TEMPLATE = """[Script Info]
 Title: AutoViral AI - Word-by-Word Subtitles
 ScriptType: v4.00+
 WrapStyle: 0
@@ -180,8 +181,8 @@ YCbCr Matrix: TV.601
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: WWord,{font},55,PRIMARY,BACK,OUTLINE,BACK2,-1,0,0,0,100,100,0,0,1,OUTLINE_W,2,2,10,10,280,1
-Style: TopHook,{font},72,HOOK_PRIMARY,BACK,HOOK_OUTLINE,BACK2,-1,0,0,0,100,100,0,0,1,6,3,8,10,10,140,1
+Style: WWord,__FONT__,__FONTSIZE__,__PRIMARY__,__BACK__,__OUTLINE__,__BACK2__,-1,0,0,0,100,100,0,0,1,__OUTLINE_W__,2,2,10,10,280,1
+Style: TopHook,__FONT__,72,__HOOK_PRIMARY__,__BACK__,__HOOK_OUTLINE__,__BACK2__,-1,0,0,0,100,100,0,0,1,6,3,8,10,10,140,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -232,14 +233,16 @@ def generar_ass(palabras: list[dict], frases: list[dict], guion: dict, cfg: dict
     # Primera palabra start para alinear hook
     first_start = float(palabras[0]["start"]) if palabras else 0.0
 
-    ass = ASS_HEADER.replace("{font}", font) \
-        .replace("PRIMARY", primary) \
-        .replace("OUTLINE", outline) \
-        .replace("BACK2", back) \
-        .replace("BACK", back) \
-        .replace("HOOK_PRIMARY", hook_primary) \
-        .replace("HOOK_OUTLINE", hook_outline) \
-        .replace("OUTLINE_W", str(outline_w))
+    # Reemplazo en orden largo->corto para evitar colisión de substrings (ej. OUTLINE dentro de HOOK_OUTLINE)
+    ass = ASS_HEADER_TEMPLATE.replace("__FONT__", font) \
+        .replace("__FONTSIZE__", str(cfg.get("fontSize", 55))) \
+        .replace("__HOOK_PRIMARY__", hook_primary) \
+        .replace("__HOOK_OUTLINE__", hook_outline) \
+        .replace("__PRIMARY__", primary) \
+        .replace("__OUTLINE__", outline) \
+        .replace("__BACK2__", back) \
+        .replace("__BACK__", back) \
+        .replace("__OUTLINE_W__", str(outline_w))
 
     lineas = []
     # Hook superior (una sola línea, 0 -> hook_dur)
