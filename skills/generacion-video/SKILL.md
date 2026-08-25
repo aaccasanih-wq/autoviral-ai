@@ -17,12 +17,16 @@ el video). En **Claude Desktop** se habilita vía el conector **Desktop Commande
 / OpenCode** ya tienes la tool **Bash/Shell** directamente — **úsala**, no asumas que no tienes
 acceso y no pidas permiso.
 
-- **El proyecto vive en** `/Users/axelaaronccasanihuachua/Desktop/Data_Science/AutoViral_AI`.
-  Antes de correr cualquier comando, `cd` a ese directorio (Desktop Commander / Claude Code suelen
-  arrancar en otra carpeta). Verificá que estás ahí con `ls scripts/pipeline.py`.
-- **Usa el virtualenv del proyecto**: los scripts corren mejor con `.venv/bin/python`
-  (ya tiene `edge-tts`, `faster-whisper`, `google-genai`, `python-dotenv`, `mutagen`). Si esa ruta
-  no existe, corre `bash setup.sh` primero.
+- **El proyecto vive en la carpeta donde el usuario clonó este repo**: es la carpeta que contiene
+  `scripts/pipeline.py` y `README.md` (la raíz del proyecto). **NO asumas una ruta absoluta fija**
+  (cada máquina y sistema operativo es distinto): ubícate en la raíz del proyecto con `cd` y
+  verifica con `ls scripts/pipeline.py`. Deriva todas las rutas como **relativas a esa raíz**
+  (p. ej. `workspace/<fecha>/<tema>/guion.json`).
+- **Usa el virtualenv del proyecto**: los scripts corren con el Python del `.venv`:
+  - macOS/Linux: `.venv/bin/python`
+  - Windows (PowerShell/CMD): `.venv\Scripts\python.exe`
+  Si esa ruta no existe, corre `bash setup.sh` (macOS/Linux/Git Bash) o `setup.bat` (Windows)
+  primero.
 - **La API key del proveedor activo está en `.env`** (gitignored): no hace falta pasarla por
   terminal. El proveedor y el modelo se leen de `IMAGEN_PROVEEDOR`, `QWEN_IMAGE_MODEL`, etc.
 - Cuando ejecutes un comando, **lee su salida** antes de continuar y respeta el principio de
@@ -185,8 +189,8 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
 
   ```bash
   python scripts/generar_imagenes.py --guion <sesión>/guion.json \
-    --proveedor qwen --referencia "/Users/.../Captura ...14.09.38.png" \
-    --referencia "/Users/.../Captura ...14.09.09.png" --overwrite
+    --proveedor qwen --referencia "C:/ruta/a/referencia_1.png" \
+    --referencia "/Users/yo/Desktop/referencia_2.png" --overwrite
   ```
 
   También pueden ir en `parametros.imagen_referencia` del guion (string o lista). Las imágenes se

@@ -82,22 +82,48 @@ autoviral-ai/
 
 - **Python 3.9+** — recomendado **3.11+** (para Kinocut y para evitar avisos de fin de vida útil en
   algunas librerías de Google).
-- **FFmpeg** en el PATH (requerido por el ensamblado del video). En macOS:
-  `brew install ffmpeg`; en Ubuntu: `sudo apt install ffmpeg`.
+- **FFmpeg** en el PATH (requerido por el ensamblado del video):
+  - macOS: `brew install ffmpeg`
+  - Ubuntu/Debian: `sudo apt install ffmpeg`
+  - Windows: `winget install ffmpeg` (o `choco install ffmpeg`) — cierra y reabre la terminal
+    después de instalarlo
 - **Node.js + npx** (para el servidor MCP de imágenes `nano-banana-2-mcp`).
 - **API key de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey).
 
+> **Clonar el repo:** puedes clonarlo en cualquier carpeta (`git clone
+> https://github.com/aaccasanih-wq/autoviral-ai.git`); el pipeline usa rutas relativas y funciona
+> en cualquier ubicación. Recomendado: una ruta corta y **sin espacios ni acentos**, p. ej.
+> `C:\Proyectos\autoviral-ai` (Windows) o `~/Desktop/autoviral-ai` (macOS/Linux).
+>
+> **Importante:** cada persona usa **sus propias claves API**. El archivo `.env` no se sube al repo
+> (está en `.gitignore`): cada quien lo crea desde `.env.example` y pega sus claves de Gemini /
+> Qwen / Google Cloud TTS.
+
 ### Instalación fácil (todo en uno)
 
-Tras clonar el repo, ejecuta `setup.sh` desde la raíz: crea `.venv`, instala las dependencias,
-prepara `.env` y verifica el entorno.
+Tras clonar el repo, desde la raíz del proyecto:
 
 ```bash
+# macOS / Linux / Git Bash en Windows:
 bash setup.sh
+
+# Windows (CMD o PowerShell, sin necesidad de Git Bash):
+setup.bat
 ```
 
-**Nota:** `setup.sh` **no** instala FFmpeg (es una dependencia del sistema). Si no lo tienes, el
+Crea `.venv`, instala las dependencias, prepara `.env` (desde `.env.example`) y verifica el entorno.
+
+**Nota:** el setup **no** instala FFmpeg (es una dependencia del sistema). Si no lo tienes, el
 pipeline funciona hasta la transcripción; el paso de ensamblado te pedirá instalarlo.
+
+**Notas Windows:**
+- Ejecuta la terminal como usuario normal (no administrador) y preferiblemente **PowerShell**.
+- Para activar el venv manualmente: `.venv\Scripts\Activate.ps1` (PowerShell) o
+  `.venv\Scripts\activate.bat` (CMD). Los scripts también se pueden llamar directo:
+  `.venv\Scripts\python.exe scripts\verificar_entorno.py`.
+- Los scripts `.sh` (`setup.sh`, `scripts/copiar_skills.sh`) requieren **Git Bash** (incluido con
+  Git para Windows); en su lugar puedes usar `setup.bat` y no necesitas nada más.
+- `faster-whisper` y `edge-tts` funcionan igual en Windows (CPU).
 
 ### Dónde van las claves API (`.env`)
 
@@ -269,8 +295,8 @@ junto con cada prompt, de modo que **todas** las escenas heredan ese estilo.
 - Por flag (tiene prioridad) al ejecutar imágenes — se puede repetir o separar por comas:
   ```bash
   python scripts/generar_imagenes.py --guion <sesión>/guion.json --overwrite \
-    --referencia "/Users/.../Captura ...14.09.38.png" \
-    --referencia "/Users/.../Captura ...14.09.09.png"
+    --referencia "C:/ruta/a/referencia_1.png" \
+    --referencia "/Users/yo/Desktop/referencia_2.png"
   ```
 - Es **opcional**: si no se define, el pipeline genera con los prompts textuales sin referencia.
 
