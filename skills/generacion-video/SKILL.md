@@ -235,15 +235,42 @@ python scripts/ensamblar_video.py --guion <sesión>/guion.json --formato vertica
 # -> <sesión>/video/final.mp4
 ```
 
-Concatena imágenes (cada una con la duración real de su escena), superpone la narración y exporta.
-**No quema subtítulos** (ver Límites): deja el `.srt` como sidecar. Formato: `vertical` → 1080x1920
-(9:16), `horizontal` → 1920x1080 (16:9). MP4 H.264+AAC.
+Aplica **efectos de edición** (movimiento Ken Burns por escena + transiciones entre escenas +
+fades globales + grading opcional), superpone la narración y exporta. La duración de cada escena
+es la real de su audio y las transiciones se calculan sobre los tiempos del guion — **el audio
+nunca se desincroniza**. **No quema subtítulos** (ver Límites): deja el `.srt` como sidecar.
+Formato: `vertical` → 1080x1920 (9:16), `horizontal` → 1920x1080 (16:9). MP4 H.264+AAC.
+
+**Catálogo de efectos** (el script lo lista con `--list-efectos`):
+
+| Tipo | Valores |
+|---|---|
+| Movimiento por escena (`zoompan`) | `static`, `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `kenburns` |
+| Transición de salida (`xfade`) | `none` (corte seco), `fade`, `dissolve`, `wipeleft`, `slideup`, `circleopen` |
+| Grading | `none`, `warm`, `cool` |
+| Presets (`--preset`) | `suave` (default: Ken Burns lento 1.12x + fade 0.4s) · `dinamico` (movimientos 1.22x + transiciones variadas) · `off` (imagen fija, como la v1) |
+
+**Prioridad:** `efectos` de la escena en el guion (escritos por la Fase 1, opcional) > `--preset` >
+comportamiento clásico. Ejemplo por escena:
+`"efectos": {"movimiento": "zoom_in", "intensidad": 1.15, "transicion": "dissolve", "grade": "cool"}`.
+
+**Flujo de decisión de efectos (agente + usuario):**
+1. Si el guion trae `efectos` por escena, respétalos — son decisiones creativas de la Fase 1.
+2. Antes de ensamblar, pregunta **una sola vez y de forma ligera**: «¿tienes algún efecto en mente
+   para algún momento?» (ej. "zoom en la revelación", "transición más lenta"). Si no, usa el preset.
+3. Elige el preset según el tono: `suave` para historias/misterio; `dinamico` para humor/gaming/
+   motivación. Pásalo con `--preset`.
+4. Los efectos aplicados quedan en `<sesión>/video/reporte_ensamblado.json`.
+5. En la revisión post-producción, ajusta a pedido: "más zoom en la escena N" → edita `efectos`
+   (o `--preset`) y re-ensambla (no regenera imágenes ni audio).
 
 ## Revisión post-producción
 
 1. Confirma `<sesión>/video/final.mp4` y presenta (ruta + duración + resolución).
 2. Pregunta si quiere ajustes:
    - **Corte / re-escena:** ajusta timestamps en `guion.json` y re-ensambla.
+   - **Efectos:** "más zoom", "otra transición", "más lenta" → edita `efectos` de esa escena en
+     `guion.json` o cambia `--preset`, y re-ensambla (usa `--salida final_v2.mp4` para comparar).
    - **Reemplazo de imagen:** regenera esa escena (`--solo <id>`) y re-ensambla.
    - **Cambio de duración:** ajusta `duracion_segundos` y narraciones, regenera audio → transcripción
      → prompts → imágenes → ensamblado.

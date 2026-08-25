@@ -198,7 +198,7 @@ python scripts/transcribir.py --audio <sesión>/audio/narracion.mp3 \
 python scripts/generar_imagenes.py --guion <sesión>/guion.json --export-prompts  # 4a. prompts editables
 python scripts/generar_imagenes.py --guion <sesión>/guion.json  # 4b. imágenes (usa prompts.txt si existe)
 python scripts/generar_imagenes.py --guion <sesión>/guion.json --contact-sheet  # 4c. montaje
-python scripts/ensamblar_video.py --guion <sesión>/guion.json   # 5. video (FFmpeg) — tras aprobar
+python scripts/ensamblar_video.py --guion <sesión>/guion.json   # 5. video con efectos — tras aprobar
 ```
 
 O el orquestador:
@@ -315,6 +315,38 @@ de ideación repite además una *ficha de personaje* literal en cada `prompt_ima
 imágenes de referencia. `prompt_extend` está **desactivado por defecto**
 (`QWEN_PROMPT_EXTEND=false`) para que el modelo no reescriba los prompts (cada reescritura añade
 varianza). Gemini no soporta seed (se ignora con un aviso).
+
+### Edición y efectos (Ken Burns + transiciones)
+
+El ensamblado no es un simple concat: aplica **efectos de edición** con FFmpeg y mantiene el audio
+perfectamente sincronizado (cada segmento se extiende la duración de su transición y el `offset`
+del `xfade` se calcula sobre los tiempos del guion).
+
+| Tipo | Valores |
+|---|---|
+| Movimiento por escena (`zoompan`) | `static`, `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `kenburns` |
+| Transición de salida (`xfade`) | `none` (corte seco), `fade`, `dissolve`, `wipeleft`, `slideup`, `circleopen` |
+| Grading | `none`, `warm`, `cool` |
+| Fades globales | entrada 0.5s / salida 0.6s |
+
+**Presets** (`--preset`): `suave` (**default**: Ken Burns lento + crossfade 0.4s — look editorial
+para historias), `dinamico` (movimientos marcados + transiciones variadas — humor/gaming) y `off`
+(comportamiento v1: imagen fija + concat).
+
+**Efectos por escena** (decisión creativa de la Fase 1; el agente puede refinarlos en Fase 2):
+
+```json
+{
+  "id": "escena-06",
+  "efectos": {"movimiento": "zoom_in", "intensidad": 1.15, "transicion": "dissolve",
+              "transicion_duracion": 0.4, "grade": "cool"}
+}
+```
+
+Prioridad: `efectos` de la escena > `--preset` > `off`. Catálogo completo:
+`python scripts/ensamblar_video.py --list-efectos`. Los efectos aplicados quedan registrados en
+`<sesión>/video/reporte_ensamblado.json`. Para ajustar ("más zoom en la escena 6", "transición más
+lenta") edita `efectos` en el guion y re-ensambla — no regenera imágenes ni audio.
 
 ---
 

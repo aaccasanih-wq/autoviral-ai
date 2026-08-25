@@ -1,13 +1,27 @@
 """Paso 5 del pipeline: ensamblar el video final con FFmpeg.
 
-Toma las imágenes por escena (``MM_SS_descripcion.png``), ajusta cada una a la duración real de su
-escena (desde ``timings.json``), concatena, superpone la narración, quema los subtítulos (``.srt``)
-y exporta al formato/resolución objetivo.
+Toma las imágenes por escena (``MM_SS_descripcion.png``), aplica **efectos de edición** a cada una
+(movimiento tipo Ken Burns vía ``zoompan``), une las escenas con **transiciones** (``xfade``),
+añade fades globales y superpone la narración. La duración de cada escena es la real del audio
+(``timings.json``) y las transiciones se calculan sobre los tiempos originales del guion, de modo
+que **el audio nunca se desincroniza** (cada segmento se extiende lo que dura su transición).
+
+Efectos (catálogo — ver ``--list-efectos``):
+    * Movimiento por escena: ``static``, ``zoom_in``, ``zoom_out``, ``pan_left``, ``pan_right``,
+      ``kenburns`` (zoom + paneo diagonal).
+    * Transición de salida de cada escena: ``none`` (corte seco), ``fade``, ``dissolve``,
+      ``wipeleft``, ``slideup``, ``circleopen``.
+    * Grading opcional: ``none``, ``warm``, ``cool``.
+    * Fades globales de entrada/salida.
+
+Los efectos se resuelven con prioridad: ``efectos`` de la escena (en ``guion.json``, opcional) >
+``--preset suave|dinamico|off`` (default ``suave``). Con ``off`` (y sin efectos por escena) el
+comportamiento es el clásico: imagen fija + concat, sin fades.
 
 Uso:
-    python scripts/ensamblar_video.py --guion workspace/guion.json \
-      --imagedir workspace/imagenes --audio workspace/audio/narracion.mp3 \
-      --srt workspace/transcripcion/narracion.srt --outdir workspace/video --formato vertical
+    python scripts/ensamblar_video.py --guion <sesión>/guion.json --formato vertical
+    python scripts/ensamblar_video.py --guion <sesión>/guion.json --preset dinamico
+    python scripts/ensamblar_video.py --list-efectos
 """
 
 from __future__ import annotations
@@ -28,6 +42,62 @@ except ImportError:  # pragma: no cover
 FPS = 30
 DIMS = {"vertical": (1080, 1920), "horizontal": (1920, 1080)}
 
+# --- Catálogo de efectos ---------------------------------------------------
+MOVIMIENTOS = ("static", "zoom_in", "zoom_out", "pan_left", "pan_right", "kenburns")
+TRANSICIONES = ("none", "fade", "dissolve", "wipeleft", "slideup", "circleopen")
+GRADES = ("none", "warm", "cool")
+
+GRADE_FILTROS = {
+    "warm": "colorbalance=rm=.07:gm=.01:bm=-.07",
+    "cool": "colorbalance=rm=-.06:bm=.06",
+}
+
+PRESETS: dict[str, dict | None] = {
+    "suave": {  # Ken Burns lento + crossfade — look editorial para historias
+        "movimientos": ("kenburns", "zoom_in", "pan_right", "zoom_out", "pan_left"),
+        "intensidad": 1.12,
+        "transiciones": ("fade",),
+        "transicion_duracion": 0.4,
+        "grade": "none",
+    },
+    "dinamico": {  # Movimientos marcados + transiciones variadas — más energía
+        "movimientos": ("zoom_in", "kenburns", "pan_left", "zoom_out", "pan_right"),
+        "intensidad": 1.22,
+        "transiciones": ("dissolve", "slideup", "wipeleft", "circleopen", "fade"),
+        "transicion_duracion": 0.35,
+        "grade": "none",
+    },
+    "off": None,  # comportamiento clásico: imagen fija + concat
+}
+
+
+def _imprimir_catalogo() -> None:
+    print("Catálogo de efectos de edición (ensamblar_video.py)\n")
+    print("Movimiento por escena (zoompan / Ken Burns):")
+    for m in MOVIMIENTOS:
+        print(f"  - {m}")
+    print("\nTransición de salida de cada escena (xfade):")
+    for t in TRANSICIONES:
+        print(f"  - {t}" + ("  (corte seco)" if t == "none" else ""))
+    print("\nGrading de color opcional:")
+    for g in GRADES:
+        print(f"  - {g}")
+    print("\nFades globales: entrada 0.5s / salida 0.6s (solo con preset activo).\n")
+    print("Presets:")
+    for nombre, p in PRESETS.items():
+        if p is None:
+            print(f"  - {nombre}: sin efectos (imagen fija + concat, como la v1)")
+        else:
+            print(f"  - {nombre}: intensidad {p['intensidad']} | transición "
+                  f"{'/'.join(p['transiciones'])} {p['transicion_duracion']}s | grade {p['grade']}")
+    print("\nPrioridad: efectos de la escena (guion.json) > --preset > off.")
+    print('Ejemplo por escena en guion.json: "efectos": {"movimiento": "zoom_in", '
+          '"intensidad": 1.15, "transicion": "dissolve", "transicion_duracion": 0.4, "grade": "cool"}')
+
+
+# ---------------------------------------------------------------------------
+# Utilidades ffmpeg
+# ---------------------------------------------------------------------------
 
 def _escape_filter_path(path: str) -> str:
     """Escapa un path para usarlo dentro de un filtro de ffmpeg (p. ej. subtitles=)."""
@@ -44,7 +114,7 @@ def _run(cmd: list[str]) -> None:
 
 
 def _soporta_filtro(nombre: str) -> bool:
-    """True si el ffmpeg en PATH incluye el filtro ``nombre`` (p. ej. 'subtitles')."""
+    """True si el ffmpeg en PATH incluye el filtro ``nombre`` (p. ej. 'subtitles', 'xfade')."""
     import re
     try:
         out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"],
@@ -66,93 +136,260 @@ def _cargar_timings(audio_dir: Path) -> dict[str, dict]:
 
 def _buscar_imagen(imagedir: Path, esc: dict, usadas: set[Path]) -> tuple[Path | None, str]:
     """Busca la imagen que corresponde a una escena por su prefijo ``MM_SS_``."""
-    # Match exacto por prefijo del inicio en MM:SS.
     prefijo = mmss(int(esc.get("inicio_segundos", 0))).replace(":", "_") + "_"
     candidatos = sorted(p for p in imagedir.glob("*.png") if p.name.startswith(prefijo))
     for c in candidatos:
         if c not in usadas:
             return c, "match"
-    # Fallback: primera imagen sin usar (por orden de nombre), para tolerar renombres.
     restantes = sorted(p for p in imagedir.glob("*.png") if p not in usadas)
     if restantes:
         return restantes[0], "order"
     return None, "none"
 
 
-def _segmento_imagen(img: Path | None, w: int, h: int, dur: float, out: Path) -> None:
-    vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
-          f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS},format=yuv420p")
-    if img is not None:
-        _run(["ffmpeg", "-y", "-loop", "1", "-i", str(img), "-t", f"{dur:.3f}",
-              "-vf", vf, "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "20", str(out)])
-    else:
+# ---------------------------------------------------------------------------
+# Segmentos por escena (con movimiento Ken Burns opcional)
+# ---------------------------------------------------------------------------
+
+def _zoompan_expr(mov: str, intens: float, frames: int) -> tuple[str, str, str]:
+    """Devuelve las expresiones (z, x, y) de zoompan para un movimiento."""
+    if mov == "zoom_in":
+        return (f"1+({intens}-1)*on/{frames}", "(iw-iw/zoom)/2", "(ih-ih/zoom)/2")
+    if mov == "zoom_out":
+        return (f"{intens}-({intens}-1)*on/{frames}", "(iw-iw/zoom)/2", "(ih-ih/zoom)/2")
+    if mov == "pan_left":
+        z = 1.0 + (intens - 1.0) / 2.0
+        return (f"{z:.4f}", f"(iw-iw/zoom)*(1-on/{frames})", "(ih-ih/zoom)/2")
+    if mov == "pan_right":
+        z = 1.0 + (intens - 1.0) / 2.0
+        return (f"{z:.4f}", f"(iw-iw/zoom)*on/{frames}", "(ih-ih/zoom)/2")
+    # kenburns: zoom in + paneo diagonal hacia el centro
+    return (f"1+({intens}-1)*on/{frames}",
+            f"(iw-iw/zoom)*on/{frames}", f"(ih-ih/zoom)*on/{frames}")
+
+
+def _segmento_imagen(img: Path | None, w: int, h: int, dur: float, out: Path,
+                     movimiento: str = "static", intens: float = 1.0,
+                     grade: str = "none") -> None:
+    """Renderiza un segmento de video (imagen estática o con movimiento) de duración ``dur``."""
+    grade_f = GRADE_FILTROS.get(grade, "")
+    codec = ["-an", "-c:v", "libx264", "-preset", "medium", "-crf", "20"]
+    if img is None:
         # Placeholder negro para escenas sin imagen.
         _run(["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:r={FPS}",
-              "-t", f"{dur:.3f}", "-an", "-c:v", "libx264", "-preset", "medium", "-crf",
-              "20", str(out)])
+              "-t", f"{dur:.3f}", *codec, "-pix_fmt", "yuv420p", str(out)])
+        return
 
+    if movimiento in ("", "static"):
+        vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+              f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS},format=yuv420p")
+        _run(["ffmpeg", "-y", "-loop", "1", "-i", str(img), "-t", f"{dur:.3f}",
+              "-vf", vf, *codec, str(out)])
+        return
+
+    # Movimiento Ken Burns: upscale x2 (reduce el jitter del zoompan) -> zoompan -> tamaño final.
+    frames = max(1, int(round(dur * FPS)))
+    z, x, y = _zoompan_expr(movimiento, intens, frames)
+    vf = (f"scale={2 * w}:{2 * h}:force_original_aspect_ratio=increase,crop={2 * w}:{2 * h},"
+          f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={w}x{h}:fps={FPS},setsar=1")
+    if grade_f:
+        vf += f",{grade_f}"
+    vf += ",format=yuv420p"
+    _run(["ffmpeg", "-y", "-i", str(img), "-vf", vf, "-frames:v", str(frames), *codec, str(out)])
+
+
+# ---------------------------------------------------------------------------
+# Unión de segmentos: concat clásico o xfade con transiciones
+# ---------------------------------------------------------------------------
+
+def _concatenar_simple(segmentos: list[Path], base: Path) -> None:
+    lista = base.parent / "concat.txt"
+    # Rutas ABSOLUTAS: el demuxer concat resuelve las rutas relativas respecto a la carpeta
+    # del archivo de lista, no del cwd.
+    lista.write_text("".join(f"file '{s.resolve().as_posix()}'\n" for s in segmentos),
+                     encoding="utf-8")
+    try:
+        _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lista),
+              "-c", "copy", str(base)])
+    finally:
+        lista.unlink(missing_ok=True)
+
+
+def _unir_con_transiciones(segmentos: list[Path], transiciones: list[tuple[str, float]],
+                           durs: list[float], base: Path) -> None:
+    """Une segmentos con xfade preservando los tiempos del guion (audio sincronizado).
+
+    Cada segmento se renderizó extendido la duración de su transición de salida; el ``offset``
+    de cada xfade es el inicio original de la escena siguiente menos la transición, de modo que
+    la transición ocurre en ``[T_{k} - t, T_{k}]`` y las escenas siguen empezando exactamente
+    cuando empieza su narración.
+    """
+    inputs: list[str] = []
+    for s in segmentos:
+        inputs += ["-i", str(s)]
+    partes: list[str] = []
+    prev = "[0:v]"
+    acumulado = 0.0
+    for k, (nombre, t) in enumerate(transiciones):
+        acumulado += durs[k]
+        off = max(0.0, acumulado - t)
+        etiqueta = f"[x{k + 1}]" if k + 1 < len(segmentos) - 1 else "[vout]"
+        partes.append(f"{prev}[{k + 1}:v]xfade=transition={nombre}:duration={t:.3f}"
+                      f":offset={off:.3f}{etiqueta}")
+        prev = etiqueta
+    _run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(partes),
+          "-map", "[vout]", "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+          "-pix_fmt", "yuv420p", str(base)])
+
+
+# ---------------------------------------------------------------------------
+# Resolución de efectos por escena
+# ---------------------------------------------------------------------------
+
+def _resolver_efectos(escs: list[dict], preset_nombre: str) -> list[dict]:
+    """Prioridad: efectos de la escena (guion) > preset. Devuelve config por escena."""
+    preset = PRESETS.get(preset_nombre)
+    res: list[dict] = []
+    for i, esc in enumerate(escs):
+        ef = esc.get("efectos") if isinstance(esc.get("efectos"), dict) else {}
+
+        mov = str(ef.get("movimiento") or (preset["movimientos"][i % len(preset["movimientos"])]
+                                           if preset else "static")).strip()
+        if mov not in MOVIMIENTOS:
+            print(f"[ensamblar] Aviso: movimiento '{mov}' desconocido en {esc['id']}; uso 'static'.",
+                  file=sys.stderr)
+            mov = "static"
+        try:
+            intens = max(1.0, min(1.6, float(ef.get("intensidad",
+                                                     preset["intensidad"] if preset else 1.0))))
+        except (TypeError, ValueError):
+            intens = preset["intensidad"] if preset else 1.0
+
+        trans = str(ef.get("transicion") or (preset["transiciones"][i % len(preset["transiciones"])]
+                                             if preset else "none")).strip()
+        if trans not in TRANSICIONES:
+            print(f"[ensamblar] Aviso: transición '{trans}' desconocida en {esc['id']}; uso 'none'.",
+                  file=sys.stderr)
+            trans = "none"
+        try:
+            tdur = max(0.0, min(1.5, float(ef.get("transicion_duracion",
+                                                  preset["transicion_duracion"] if preset else 0.0))))
+        except (TypeError, ValueError):
+            tdur = preset["transicion_duracion"] if preset else 0.0
+        if trans == "none":
+            tdur = 0.0
+
+        grade = str(ef.get("grade") or (preset["grade"] if preset else "none")).strip()
+        if grade not in GRADES:
+            grade = "none"
+
+        res.append({"movimiento": mov, "intensidad": round(intens, 3), "transicion": trans,
+                    "transicion_duracion": round(tdur, 3), "grade": grade})
+
+    if res:
+        res[-1]["transicion"] = "none"  # la última escena no tiene transición de salida
+        res[-1]["transicion_duracion"] = 0.0
+    return res
+
+
+# ---------------------------------------------------------------------------
+# Ensamblado principal
+# ---------------------------------------------------------------------------
 
 def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
-              formato: str, salida: str) -> Path:
+              formato: str, salida: str, preset_nombre: str = "suave") -> Path:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("No se encontró 'ffmpeg' en el PATH. Instálalo para ensamblar el video.")
+    if preset_nombre not in PRESETS:
+        raise RuntimeError(f"Preset desconocido '{preset_nombre}'. "
+                           f"Opciones: {', '.join(PRESETS)} (o --list-efectos).")
 
     w, h = DIMS[formato]
     escs = escenas(guion)
     timings = _cargar_timings(audio.parent)
+    efectos = _resolver_efectos(escs, preset_nombre)
 
     outdir.mkdir(parents=True, exist_ok=True)
     tmp = outdir / "_work"
     tmp.mkdir(parents=True, exist_ok=True)
 
-    # 1) Segmentos (una escena = una duración real = un segmento).
+    # 1) Segmentos: una escena = un segmento, extendido la duración de su transición de salida.
     segmentos: list[Path] = []
+    durs: list[float] = []
     usadas: set[Path] = set()
     faltantes: list[str] = []
     reporte: list[dict] = []
-    for esc in escs:
+    for i, esc in enumerate(escs):
         dur = timings.get(esc["id"], {}).get("duracion_segundos")
         if not dur:
             dur = float(esc.get("fin_segundos", esc.get("inicio_segundos", 0))) - float(
                 esc.get("inicio_segundos", 0))
         if dur <= 0:
             dur = 1.0
+        # Cuantizar a la grilla de frames: los offsets del xfade deben coincidir con lo
+        # realmente codificado, o el error de redondeo se acumula entre escenas.
+        dur = round(round(float(dur) * FPS) / FPS, 6)
+        durs.append(dur)
+
+        ef = efectos[i]
+        t_salida = ef["transicion_duracion"] if i < len(escs) - 1 else 0.0
+        # Colchón en el último segmento: evita que -shortest recorte el final de la narración
+        # por diferencias de redondeo entre el video y el audio.
+        pad = 0.5 if i == len(escs) - 1 else 0.0
         img, modo = _buscar_imagen(imagedir, esc, usadas)
-        img_final: Path | None = img
-        if img_final is None:
+        if img is None:
             faltantes.append(esc["id"])
         else:
-            usadas.add(img_final)
+            usadas.add(img)
         seg = tmp / f"{esc['id']}.mp4"
-        _segmento_imagen(img_final, w, h, dur, seg)
+        _segmento_imagen(img, w, h, dur + t_salida + pad, seg,
+                         movimiento=ef["movimiento"], intens=ef["intensidad"], grade=ef["grade"])
         segmentos.append(seg)
-        reporte.append({"id": esc["id"], "imagen": str(img_final) if img_final else None,
-                        "modo": modo, "duracion_segundos": round(float(dur), 3)})
+        reporte.append({"id": esc["id"], "imagen": str(img) if img else None, "modo": modo,
+                        "duracion_segundos": round(float(dur), 3), **ef})
 
     if faltantes:
         print(f"[ensamblar] Aviso: sin imagen para {', '.join(faltantes)} (placeholder negro).",
               file=sys.stderr)
 
-    # 2) Concatenar segmentos (mismo codec/tamaño).
-    lista = tmp / "concat.txt"
-    # Rutas ABSOLUTAS: el demuxer concat resuelve las rutas relativas respecto a la carpeta
-    # del archivo de lista, no del cwd. Usamos rutas absolutas para que sea independiente.
-    lista.write_text("".join(f"file '{s.resolve().as_posix()}'\n" for s in segmentos), encoding="utf-8")
+    # 2) Unir segmentos: xfade si hay transiciones (y ffmpeg las soporta); si no, concat clásico.
+    transiciones = [(efectos[i]["transicion"], efectos[i]["transicion_duracion"])
+                    for i in range(len(escs) - 1)]
+    usa_xfade = (len(escs) > 1 and any(t[1] > 0 for t in transiciones)
+                 and _soporta_filtro("xfade"))
+    if len(escs) > 1 and any(t[1] > 0 for t in transiciones) and not _soporta_filtro("xfade"):
+        print("[ensamblar] Aviso: este ffmpeg no soporta 'xfade'; uno sin transiciones.",
+              file=sys.stderr)
     base = outdir / "_base.mp4"
-    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lista), "-c", "copy", str(base)])
+    if usa_xfade:
+        _unir_con_transiciones(segmentos, transiciones, durs, base)
+    else:
+        _concatenar_simple(segmentos, base)
 
-    # 3) Mux audio + quemar subtítulos + exportar.
+    # 3) Mux audio + fades globales + subtítulos (si el ffmpeg los soporta) + exportar.
     final = outdir / salida
+    total = sum(durs)
+    vf: list[str] = []
+    if usa_xfade or preset_nombre != "off":
+        vf.append("fade=t=in:st=0:d=0.5")
+        if total > 1.0:
+            vf.append(f"fade=t=out:st={max(0.0, total - 0.6):.3f}:d=0.6")
+    if srt.is_file():
+        if _soporta_filtro("subtitles"):
+            vf.append(f"subtitles={_escape_filter_path(str(srt))}")
+        else:
+            print("[ensamblar] Aviso: el ffmpeg actual no soporta el filtro 'subtitles' "
+                  "(compilado sin libass); se omite quemar subtítulos. El .srt queda como sidecar.",
+                  file=sys.stderr)
     cmd = ["ffmpeg", "-y", "-i", str(base), "-i", str(audio), "-map", "0:v", "-map", "1:a",
            "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-shortest"]
-    if srt.is_file():
-        if _soporta_filtro("subtitles"):
-            cmd += ["-vf", f"subtitles={_escape_filter_path(str(srt))}"]
-        else:
-            print("[ensamblar] Aviso: el ffmpeg actual no soporta el filtro 'subtitles' "
-                  "(compilado sin libass); se omite quemar subtítulos. El .srt queda en "
-                  "workspace/transcripcion/narracion.srt.", file=sys.stderr)
+    if total > 0:
+        # Recorte exacto a la suma de las duraciones reales (= duración del audio): evita que
+        # el colchón del último segmento o el interleave de -shortest dejen cola en silencio.
+        cmd += ["-t", f"{total:.3f}"]
+    if vf:
+        cmd += ["-vf", ",".join(vf)]
     cmd.append(str(final))
     _run(cmd)
 
@@ -161,14 +398,18 @@ def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
     shutil.rmtree(tmp, ignore_errors=True)
     (outdir / "reporte_ensamblado.json").write_text(
         json.dumps({
-            "formato": formato, "resolucion": f"{w}x{h}", "escenas": reporte,
-            "objetivo_segundos": duracion_objetivo(guion),
+            "formato": formato, "resolucion": f"{w}x{h}", "preset": preset_nombre,
+            "efectos_activos": bool(preset_nombre != "off" or
+                                    any(e["movimiento"] != "static" or e["grade"] != "none"
+                                        or e["transicion_duracion"] > 0 for e in efectos)),
+            "transiciones_xfade": usa_xfade,
+            "escenas": reporte, "objetivo_segundos": duracion_objetivo(guion),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
     return final
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Ensamblar el video final (FFmpeg).")
+    ap = argparse.ArgumentParser(description="Ensamblar el video final (FFmpeg, con efectos).")
     ap.add_argument("--guion", default="workspace/guion.json")
     ap.add_argument("--imagedir", default=None,
                     help="Carpeta de imágenes. Por defecto <carpeta del guion>/imagenes.")
@@ -181,7 +422,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--formato", default=None, choices=["vertical", "horizontal"],
                     help="Por defecto toma el formato del guion.")
     ap.add_argument("--salida", default="final.mp4", help="Nombre del archivo final.")
+    ap.add_argument("--preset", default="suave", choices=list(PRESETS),
+                    help="Preset de edición cuando la escena no define 'efectos'. "
+                         "Default: suave (Ken Burns lento + crossfade). 'off' = como la v1.")
+    ap.add_argument("--list-efectos", action="store_true",
+                    help="Muestra el catálogo de efectos y presets, y sale.")
     args = ap.parse_args(argv)
+
+    if args.list_efectos:
+        _imprimir_catalogo()
+        return 0
 
     try:
         guion = cargar_guion(args.guion)
@@ -191,7 +441,8 @@ def main(argv: list[str] | None = None) -> int:
         srt = Path(args.srt) if args.srt else sd / "transcripcion" / "narracion.srt"
         outdir = Path(args.outdir) if args.outdir else sd / "video"
         formato = args.formato or guion["parametros"]["formato"]
-        out = ensamblar(guion, imagedir, audio, srt, outdir, formato, args.salida)
+        out = ensamblar(guion, imagedir, audio, srt, outdir, formato, args.salida,
+                        preset_nombre=args.preset)
     except Exception as e:
         print(f"[ensamblar] Error: {e}", file=sys.stderr)
         return 1
