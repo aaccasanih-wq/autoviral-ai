@@ -14,6 +14,9 @@ faster-whisper>=1.0.0
 # El agente normalmente usara el servidor MCP nano-banana-2 en su lugar.
 google-genai>=1.0.0
 
+# --- Subtítulos quemados (ffmpeg con libass) ---
+imageio-ffmpeg>=0.4.8  # binario ffmpeg 7.1 con libass para quemar ASS (subtitles filter)
+
 # --- Utilidades ---
 requests>=2.31.0
 mutagen>=1.47.0  # leer duración de los mp3 sin depender de ffmpeg

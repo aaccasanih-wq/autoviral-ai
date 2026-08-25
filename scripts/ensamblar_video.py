@@ -48,8 +48,11 @@ TRANSICIONES = ("none", "fade", "dissolve", "wipeleft", "slideup", "circleopen")
 GRADES = ("none", "warm", "cool")
 
 GRADE_FILTROS = {
-    "warm": "colorbalance=rm=.07:gm=.01:bm=-.07",
-    "cool": "colorbalance=rm=-.06:bm=.06",
+    # Antes eran valores más fuertes (.07) que en combinación con zoompan + yuv420p
+    # lavaban los colores en fondos claros (caso reportado: 00_35, 01_05, 01_48).
+    # Ahora son más sutiles y con leve boost de saturación para no desteñir.
+    "warm": "colorbalance=rm=0.03:gm=0.005:bm=-0.03:rh=0.02:bh=-0.02,eq=saturation=1.04:contrast=1.02",
+    "cool": "colorbalance=rm=-0.03:bm=0.03:rh=-0.01:bh=0.02,eq=saturation=1.04:contrast=1.02",
 }
 
 PRESETS: dict[str, dict | None] = {
@@ -173,7 +176,9 @@ def _segmento_imagen(img: Path | None, w: int, h: int, dur: float, out: Path,
                      grade: str = "none") -> None:
     """Renderiza un segmento de video (imagen estática o con movimiento) de duración ``dur``."""
     grade_f = GRADE_FILTROS.get(grade, "")
-    codec = ["-an", "-c:v", "libx264", "-preset", "medium", "-crf", "20"]
+    # veryfast + crf 22 es ~3x más rápido que medium/crf20 y mantiene calidad suficiente para Shorts
+    # (antes medium hacía que 9 escenas tardaran >10min y el timeout de la tool mataba el proceso)
+    codec = ["-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22"]
     if img is None:
         # Placeholder negro para escenas sin imagen.
         _run(["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:r={FPS}",
@@ -182,7 +187,10 @@ def _segmento_imagen(img: Path | None, w: int, h: int, dur: float, out: Path,
 
     if movimiento in ("", "static"):
         vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
-              f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS},format=yuv420p")
+              f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS}")
+        if grade_f:
+            vf += f",{grade_f}"
+        vf += ",format=yuv420p"
         _run(["ffmpeg", "-y", "-loop", "1", "-i", str(img), "-t", f"{dur:.3f}",
               "-vf", vf, *codec, str(out)])
         return
@@ -238,8 +246,8 @@ def _unir_con_transiciones(segmentos: list[Path], transiciones: list[tuple[str, 
                       f":offset={off:.3f}{etiqueta}")
         prev = etiqueta
     _run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(partes),
-          "-map", "[vout]", "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-          "-pix_fmt", "yuv420p", str(base)])
+           "-map", "[vout]", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+           "-pix_fmt", "yuv420p", str(base)])
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +374,7 @@ def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
     else:
         _concatenar_simple(segmentos, base)
 
-    # 3) Mux audio + fades globales + subtítulos (si el ffmpeg los soporta) + exportar.
+    # 3) Mux audio + fades globales + subtítulos (quemados por defecto) + exportar.
     final = outdir / salida
     total = sum(durs)
     vf: list[str] = []
@@ -374,15 +382,33 @@ def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
         vf.append("fade=t=in:st=0:d=0.5")
         if total > 1.0:
             vf.append(f"fade=t=out:st={max(0.0, total - 0.6):.3f}:d=0.6")
-    if srt.is_file():
-        if _soporta_filtro("subtitles"):
-            vf.append(f"subtitles={_escape_filter_path(str(srt))}")
+    # Subtítulos: por defecto SÍ se queman (estilo TikTok amarillo + hook rojo).
+    # Prioridad: <sesion>/transcripcion/narracion.ass (palabra-a-palabra) > .srt frase-a-frase.
+    # Se puede desactivar con parametros.subtitulos.enabled=false en guion.json o --no-subtitulos.
+    subt_cfg = (guion.get("parametros") or {}).get("subtitulos") or {}
+    subt_enabled = True if not isinstance(subt_cfg, dict) else subt_cfg.get("enabled", True)
+    # Flag CLI --no-subtitulos tiene prioridad (se maneja en main, pero también aquí por si se llama directo)
+    # Buscar ASS primero (word-by-word), luego SRT.
+    ass_path = srt.parent / "narracion.ass"
+    sub_path = None
+    if subt_enabled and ass_path.is_file():
+        sub_path = ass_path
+    elif subt_enabled and srt.is_file():
+        sub_path = srt
+    if sub_path is not None:
+        if _soporta_filtro("subtitles") or _soporta_filtro("ass"):
+            # subtitles funciona para .srt y .ass (libass detecta por extensión)
+            vf.append(f"subtitles={_escape_filter_path(str(sub_path))}")
+            print(f"[ensamblar] Quemando subtítulos -> {sub_path.name} ({'ASS palabra-a-palabra' if sub_path.suffix == '.ass' else 'SRT'})")
         else:
-            print("[ensamblar] Aviso: el ffmpeg actual no soporta el filtro 'subtitles' "
-                  "(compilado sin libass); se omite quemar subtítulos. El .srt queda como sidecar.",
-                  file=sys.stderr)
+            print("[ensamblar] Aviso: ffmpeg sin filtro 'subtitles'/'ass' (sin libass); "
+                  "subtítulos no quemados. Instala ffmpeg con libass: pip install imageio-ffmpeg "
+                  "y copia el binario a tu PATH, o usa conda-forge con libass.", file=sys.stderr)
+            print(f"[ensamblar] Sidecar disponible: {sub_path}", file=sys.stderr)
+    elif not subt_enabled:
+        print("[ensamblar] Subtítulos desactivados (parametros.subtitulos.enabled=false).", file=sys.stderr)
     cmd = ["ffmpeg", "-y", "-i", str(base), "-i", str(audio), "-map", "0:v", "-map", "1:a",
-           "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-shortest"]
     if total > 0:
         # Recorte exacto a la suma de las duraciones reales (= duración del audio): evita que
@@ -423,10 +449,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="Por defecto toma el formato del guion.")
     ap.add_argument("--salida", default="final.mp4", help="Nombre del archivo final.")
     ap.add_argument("--preset", default="suave", choices=list(PRESETS),
-                    help="Preset de edición cuando la escena no define 'efectos'. "
-                         "Default: suave (Ken Burns lento + crossfade). 'off' = como la v1.")
+                     help="Preset de edición cuando la escena no define 'efectos'. "
+                          "Default: suave (Ken Burns lento + crossfade). 'off' = como la v1.")
+    ap.add_argument("--no-subtitulos", action="store_true",
+                     help="No quemar subtítulos en el video (por defecto se queman si existe .ass/.srt).")
     ap.add_argument("--list-efectos", action="store_true",
-                    help="Muestra el catálogo de efectos y presets, y sale.")
+                     help="Muestra el catálogo de efectos y presets, y sale.")
     args = ap.parse_args(argv)
 
     if args.list_efectos:
@@ -441,6 +469,8 @@ def main(argv: list[str] | None = None) -> int:
         srt = Path(args.srt) if args.srt else sd / "transcripcion" / "narracion.srt"
         outdir = Path(args.outdir) if args.outdir else sd / "video"
         formato = args.formato or guion["parametros"]["formato"]
+        if args.no_subtitulos:
+            guion.setdefault("parametros", {}).setdefault("subtitulos", {})["enabled"] = False
         out = ensamblar(guion, imagedir, audio, srt, outdir, formato, args.salida,
                         preset_nombre=args.preset)
     except Exception as e:

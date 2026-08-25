@@ -87,11 +87,19 @@ Antes de redactar, confirma y deja constancia de:
 | Público objetivo | `parametros.publico` | p. ej. `adultos 25-40` |
 | Imagen de referencia (opcional) | `parametros.imagen_referencia` | ruta a un `.png/.jpg/...` cuyo estilo animado se replicará |
 | Tono de voz (opcional) | `parametros.tts` | objeto: `{"motor": "edge"\|"gcp", "voz": "...", "rate": "-10%", "pitch": "-2"}` según la emoción del guion |
+| Subtítulos (opcional) | `parametros.subtitulos` | objeto: `{"enabled": true, "color": "amarillo\|blanco\|#RRGGBB", "font": "Arial Black", "fontSize": 64, "outline": 5, "hook": "TEXTO ROJO SUPERIOR", "hookColor": "rojo", "hookDuration": 3.0}` para quemado TikTok palabra-a-palabra |
 
 > **Tono de voz según el video (recomendado):** define `parametros.tts` acorde a la emoción del
 > guion — misterio/drama: voz grave con `rate` negativo y `pitch` negativo; motivación: voz
 > energética con `rate` positivo; finanzas/educación: voz neutra a ritmo natural. La Fase 2 lo
 > consume `generar_audio.py` automáticamente (prioridad: CLI > guion > `.env`).
+
+> **Subtítulos TikTok (nuevo, por defecto ON):** define `parametros.subtitulos` para el estilo
+> de subtítulos quemados palabra-a-palabra (amarillo abajo + hook rojo arriba). Ej.:
+> `{"color": "amarillo", "hook": "WHO REALLY RUNS THE WORLD?", "hookDuration": 3.0}`.
+> La Fase 2 lo consume `generar_subtitulos.py` → `transcripcion/narracion.ass` y
+> `ensamblar_video.py` lo quema por defecto (prioridad: CLI > guion). Si no se define,
+> usa amarillo #FFFF00 y hook automático de la primera frase.
 
 > El **proveedor de imágenes** (Gemini o Alibaba Qwen) **no** se guarda en el guion: se elige al
 > producir, en la Fase 2, vía `IMAGEN_PROVEEDOR` (`gemini` o `qwen`) o el flag `--proveedor` de
@@ -174,7 +182,8 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
     "estilo_visual": "cinemático natural, luz suave",
     "publico": "adultos 25-40",
     "imagen_referencia": [],   // opcional: ruta(s) .png/.jpg/.webp cuyo estilo se replicará (string o lista)
-    "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"}   // opcional
+    "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"},   // opcional
+    "subtitulos": {"enabled": true, "color": "amarillo", "font": "Arial Black", "hook": "WHO REALLY RUNS THE WORLD?", "hookColor": "rojo", "hookDuration": 3.0} // opcional, estilo TikTok
   },
   "escenas": [
     {

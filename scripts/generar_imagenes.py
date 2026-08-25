@@ -435,9 +435,14 @@ def main(argv: list[str] | None = None) -> int:
     for v in (args.referencia or []):
         refs_cli += [x.strip() for x in v.split(",") if x.strip()]
     referencias = _leer_referencias(refs_cli or imagenes_referencia(guion))
+    # Qwen solo soporta 0-3 imágenes de referencia (0 = T2I, 1-3 = I2I). Si se pasan más, trunca automáticamente.
+    if proveedor == "qwen" and len(referencias) > 3:
+        print(f"[imagenes] AVISO: Qwen soporta máximo 3 referencias, se recibieron {len(referencias)}. "
+              f"Se usan solo las 3 primeras y se ignoran las demás para evitar error 400.", file=sys.stderr)
+        referencias = referencias[:3]
     if refs_cli or imagenes_referencia(guion):
         print(f"[imagenes] Estilo anclado a {len(referencias)} imagen(es) de referencia: "
-              f"{refs_cli or imagenes_referencia(guion)}")
+              f"{(refs_cli or imagenes_referencia(guion))[:3] if proveedor == 'qwen' and len(refs_cli or imagenes_referencia(guion)) > 3 else (refs_cli or imagenes_referencia(guion))}")
 
     gemini_client = None
     if proveedor == "gemini":
@@ -471,7 +476,14 @@ def main(argv: list[str] | None = None) -> int:
     rpm = qwen_rpm()
     throttle = _Throttle(rpm)
     if proveedor == "qwen" and rpm > 0:
-        print(f"[imagenes] Límite de peticiones activado: {rpm}/min (QWEN_RPM).")
+        # Estimación de tiempo total para que el usuario no piense que se colgó
+        pendientes = sum(1 for esc in escs if not (outdir / nombre_imagen(esc)).is_file() or args.overwrite)
+        if pendientes > 0:
+            est_min = (pendientes * 60.0 / rpm) / 60.0
+            print(f"[imagenes] Límite de peticiones activado: {rpm}/min (QWEN_RPM). "
+                  f"Pendientes: {pendientes} escenas → ~{est_min:.1f} min estimados (throttle).")
+        else:
+            print(f"[imagenes] Límite de peticiones activado: {rpm}/min (QWEN_RPM). Todas las imágenes ya existen, sin espera.")
 
     ok = 0
     fallidas: list[str] = []

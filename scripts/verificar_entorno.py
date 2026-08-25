@@ -17,8 +17,9 @@ import sys
 
 CHECKS_LOCAL = [
     ("edge-tts", "edge_tts", "texto-a-voz narración"),
-    ("faster-whisper", "faster_whisper", "transcripción a .srt"),
+    ("faster-whisper", "faster_whisper", "transcripción a .srt/.ass"),
     ("google-genai", "google.genai", "imágenes Gemini (vía CLI)"),
+    ("imageio-ffmpeg", "imageio_ffmpeg", "ffmpeg con libass para subtítulos quemados"),
     ("mutagen", "mutagen", "leer duración de audio"),
 ]
 BINARIOS = [
@@ -48,6 +49,16 @@ def _check_mcp(servidor: str) -> bool:
     return False
 
 
+def _ffmpeg_tiene_libass() -> bool:
+    """True si el ffmpeg en PATH soporta el filtro 'subtitles'/'ass' (libass)."""
+    import re, subprocess
+    try:
+        out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True, timeout=10).stdout
+        return bool(re.search(r"(?<![-\w])subtitles(?![-\w])", out) or re.search(r"(?<![-\w])ass(?![-\w])", out))
+    except Exception:
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Verificación del entorno de AutoViral AI.")
     ap.add_argument("--json", action="store_true", help="Salida JSON.")
@@ -55,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
 
     local = [{"name": n, "presente": _mod_ok(m), "rol": r} for n, m, r in CHECKS_LOCAL]
     bins = [{"name": n, "presente": _bin_ok(n), "rol": r} for n, r in BINARIOS]
+    # Extra: ffmpeg con libass para subtítulos quemados
+    tiene_libass = _ffmpeg_tiene_libass()
+    bins.append({"name": "ffmpeg (libass)", "presente": tiene_libass, "rol": "quemado de subtítulos ASS (imageio-ffmpeg trae ffmpeg 7.1 con libass)"})
     mcp = [{"name": s, "presente": _check_mcp(s), "rol": "servidor MCP de " + s} for s in MCP_SRVS]
 
     # Motores TTS (opcionales): edge siempre; gcp si hay API key configurada.

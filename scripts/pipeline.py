@@ -25,13 +25,14 @@ cargar_env()
 
 RAIZ = Path(__file__).resolve().parent.parent
 
-PASOS = {"audio", "transcripcion", "imagenes", "ensamblado"}
-ORDEN_DEF = ["audio", "transcripcion", "imagenes", "ensamblado"]
+PASOS = {"audio", "transcripcion", "subtitulos", "imagenes", "ensamblado"}
+ORDEN_DEF = ["audio", "transcripcion", "subtitulos", "imagenes", "ensamblado"]
 
 # Script por paso.
 SCRIPT = {
     "audio": "scripts/generar_audio.py",
     "transcripcion": "scripts/transcribir.py",
+    "subtitulos": "scripts/generar_subtitulos.py",
     "imagenes": "scripts/generar_imagenes.py",
     "ensamblado": "scripts/ensamblar_video.py",
 }
@@ -45,13 +46,16 @@ def _ejecutar(paso: str, guion: Path, voz: str, modelo: str, formatos: str,
     # Cada video vive en su propia carpeta de sesión (workspace/<fecha>/<tema>/), así ningún
     # video pisa a otro. Todas las rutas derivan de la carpeta del guion.
     sd = directorio_sesion(guion)
-    if paso in ("audio", "imagenes", "ensamblado"):
+    if paso in ("audio", "imagenes", "ensamblado", "subtitulos"):
         cmd += ["--guion", str(guion)]
     if paso == "audio":
         cmd += ["--outdir", str(sd / "audio"), "--voz", voz]
     elif paso == "transcripcion":
         cmd += ["--audio", str(sd / "audio" / "narracion.mp3"),
                 "--outdir", str(sd / "transcripcion"), "--model", whisper_model]
+    elif paso == "subtitulos":
+        # Usa palabras.json de la transcripción + guion para generar ASS con hook
+        cmd += []  # todo deriva de --guion
     elif paso == "imagenes":
         cmd += ["--outdir", str(sd / "imagenes"), "--model", modelo]
         if proveedor:

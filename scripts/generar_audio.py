@@ -79,10 +79,26 @@ def _leer_duracion(path: Path) -> float:
 # ---------------------------------------------------------------------------
 
 async def _sintetizar_edge(texto: str, voz: str, rate: str, pitch: str, out: Path) -> None:
+    import asyncio
     import edge_tts
 
-    communicate = edge_tts.Communicate(texto, voz, rate=rate, volume="+0%", pitch=pitch)
-    await communicate.save(str(out))
+    # Reintentos con backoff para evitar NoAudioReceived por rate-limit de edge-tts
+    for intento in range(3):
+        try:
+            communicate = edge_tts.Communicate(texto, voz, rate=rate, volume="+0%", pitch=pitch)
+            await communicate.save(str(out))
+            # Verificar que el archivo se generó con contenido
+            if out.is_file() and out.stat().st_size > 0:
+                return
+            raise RuntimeError(f"Archivo vacío tras sintetizar: {out}")
+        except Exception as e:
+            es_ultimo = intento == 2
+            # NoAudioReceived y errores de red son reintentables
+            if es_ultimo:
+                raise
+            espera = 1.5 * (intento + 1)
+            print(f"[audio] Aviso: intento {intento+1}/3 falló ({e}); reintento en {espera:.1f}s ...", file=sys.stderr)
+            await asyncio.sleep(espera)
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +223,15 @@ def main(argv: list[str] | None = None) -> int:
           f"| rate='{rate}' | pitch='{pitch}' ...")
     if motor == "edge":
         async def _todo_edge() -> None:
-            await asyncio.gather(*(
-                _sintetizar_edge(t, voz, rate, pitch, out) for _, t, out in trabajos))
+            # Secuencial con delay + reintentos para evitar rate-limit de edge-tts
+            # (antes usaba asyncio.gather en paralelo y causaba NoAudioReceived)
+            total = len(trabajos)
+            for idx, (_, t, out) in enumerate(trabajos, 1):
+                print(f"[audio] {idx}/{total} sintetizando {out.name} ...", flush=True)
+                await _sintetizar_edge(t, voz, rate, pitch, out)
+                # Throttle suave entre peticiones a edge-tts
+                if idx < total:
+                    await asyncio.sleep(0.8)
         asyncio.run(_todo_edge())
     else:
         for _, texto, out in trabajos:

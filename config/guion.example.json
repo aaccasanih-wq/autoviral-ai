@@ -6,9 +6,12 @@
     "duracion_segundos": 45,
     "formato": "vertical",
     "idioma": "es",
+    "nicho": "finanzas",
     "estilo_visual": "cinemático natural, luz suave de mañana",
     "publico": "adultos 25-40, usuarios de redes sociales",
-    "imagen_referencia": []
+    "imagen_referencia": [],
+    "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"},
+    "subtitulos": {"enabled": true, "color": "amarillo", "font": "Arial Black", "fontSize": 64, "outline": 5, "hook": null, "hookColor": "rojo", "hookDuration": 3.0}
   },
   "escenas": [
     {
