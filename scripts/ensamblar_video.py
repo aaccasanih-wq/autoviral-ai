@@ -43,9 +43,12 @@ FPS = 30
 DIMS = {"vertical": (1080, 1920), "horizontal": (1920, 1080)}
 
 # --- Catálogo de efectos ---------------------------------------------------
-MOVIMIENTOS = ("static", "zoom_in", "zoom_out", "pan_left", "pan_right", "kenburns")
-TRANSICIONES = ("none", "fade", "dissolve", "wipeleft", "slideup", "circleopen")
+MOVIMIENTOS = ("static", "zoom_in", "zoom_out", "pan_left", "pan_right", "kenburns",
+               "pop", "slide_up", "slide_down", "shake")
+TRANSICIONES = ("none", "fade", "dissolve", "wipeleft", "slideup", "slideleft", "slideright", "slidedown", "circleopen")
 GRADES = ("none", "warm", "cool")
+OVERLAY_ENTRADAS = ("slideup", "slidedown", "fade", "pop", "wipeup")
+OVERLAY_SALIDAS = ("slidedown", "slideup", "fade", "pop", "wipedown")
 
 GRADE_FILTROS = {
     # Antes eran valores más fuertes (.07) que en combinación con zoompan + yuv420p
@@ -166,6 +169,20 @@ def _zoompan_expr(mov: str, intens: float, frames: int) -> tuple[str, str, str]:
     if mov == "pan_right":
         z = 1.0 + (intens - 1.0) / 2.0
         return (f"{z:.4f}", f"(iw-iw/zoom)*on/{frames}", "(ih-ih/zoom)/2")
+    if mov == "pop":
+        # Pop-in: zoom rápido 0.85->1.05->1.0 con pequeño rebote en primeros 30% frames
+        return (f"if(lt(on,{frames*0.3}),0.85+0.20*on/({frames*0.3}),if(lt(on,{frames*0.6}),1.05-0.05*(on-{frames*0.3})/({frames*0.3}),1.0))",
+                "(iw-iw/zoom)/2", "(ih-ih/zoom)/2")
+    if mov == "slide_up":
+        # Slide up: imagen entra desde abajo (y animado) + ligero zoom
+        z = 1.0 + (intens - 1.0) / 2.0
+        return (f"{z:.4f}", "(iw-iw/zoom)/2", f"(ih-ih/zoom)*(1 - min(1, on/{frames*0.4}))")
+    if mov == "slide_down":
+        z = 1.0 + (intens - 1.0) / 2.0
+        return (f"{z:.4f}", "(iw-iw/zoom)/2", f"(ih-ih/zoom)*min(1, on/{frames*0.4})")
+    if mov == "shake":
+        z = 1.0 + (intens - 1.0) / 3.0
+        return (f"{z:.4f}", "(iw-iw/zoom)/2 + 8*sin(on*0.8)", "(ih-ih/zoom)/2 + 5*cos(on*0.6)")
     # kenburns: zoom in + paneo diagonal hacia el centro
     return (f"1+({intens}-1)*on/{frames}",
             f"(iw-iw/zoom)*on/{frames}", f"(ih-ih/zoom)*on/{frames}")
@@ -173,37 +190,139 @@ def _zoompan_expr(mov: str, intens: float, frames: int) -> tuple[str, str, str]:
 
 def _segmento_imagen(img: Path | None, w: int, h: int, dur: float, out: Path,
                      movimiento: str = "static", intens: float = 1.0,
-                     grade: str = "none") -> None:
-    """Renderiza un segmento de video (imagen estática o con movimiento) de duración ``dur``."""
-    grade_f = GRADE_FILTROS.get(grade, "")
-    # veryfast + crf 22 es ~3x más rápido que medium/crf20 y mantiene calidad suficiente para Shorts
-    # (antes medium hacía que 9 escenas tardaran >10min y el timeout de la tool mataba el proceso)
-    codec = ["-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22"]
-    if img is None:
-        # Placeholder negro para escenas sin imagen.
-        _run(["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:r={FPS}",
-              "-t", f"{dur:.3f}", *codec, "-pix_fmt", "yuv420p", str(out)])
-        return
+                     grade: str = "none",
+                     overlays: list[dict] | None = None) -> None:
+    """Renderiza un segmento de video (imagen estática o con movimiento) de duración ``dur``.
 
-    if movimiento in ("", "static"):
-        vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
-              f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS}")
+    Soporta overlays intra-escena estilo TikTok (ej. Tom que sube desde abajo):
+    ``overlays=[{"src":"path.png","entrada":"slideup","salida":"slidedown","inicio":0.5,"duracion":2.0,"escala":0.5}]``
+    Si no hay overlays o el src no existe, se comporta como antes (sin overlay).
+    """
+    grade_f = GRADE_FILTROS.get(grade, "")
+    codec = ["-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22"]
+    overlays = [o for o in (overlays or []) if isinstance(o, dict) and o.get("src")]
+    # Filtrar overlays cuyo src no existe (evita error)
+    overlays_validos: list[dict] = []
+    for o in overlays:
+        p = Path(str(o["src"]))
+        if p.is_file():
+            overlays_validos.append(o)
+        else:
+            print(f"[ensamblar] Aviso: overlay no encontrado: {p}, se omite.", file=sys.stderr)
+
+    # Caso simple sin overlay: comportamiento original
+    if not overlays_validos:
+        if img is None:
+            _run(["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:r={FPS}",
+                  "-t", f"{dur:.3f}", *codec, "-pix_fmt", "yuv420p", str(out)])
+            return
+
+        if movimiento in ("", "static"):
+            vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+                  f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS}")
+            if grade_f:
+                vf += f",{grade_f}"
+            vf += ",format=yuv420p"
+            _run(["ffmpeg", "-y", "-loop", "1", "-i", str(img), "-t", f"{dur:.3f}",
+                  "-vf", vf, *codec, str(out)])
+            return
+
+        frames = max(1, int(round(dur * FPS)))
+        z, x, y = _zoompan_expr(movimiento, intens, frames)
+        vf = (f"scale={2 * w}:{2 * h}:force_original_aspect_ratio=increase,crop={2 * w}:{2 * h},"
+              f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={w}x{h}:fps={FPS},setsar=1")
         if grade_f:
             vf += f",{grade_f}"
         vf += ",format=yuv420p"
-        _run(["ffmpeg", "-y", "-loop", "1", "-i", str(img), "-t", f"{dur:.3f}",
-              "-vf", vf, *codec, str(out)])
+        _run(["ffmpeg", "-y", "-i", str(img), "-vf", vf, "-frames:v", str(frames), *codec, str(out)])
         return
 
-    # Movimiento Ken Burns: upscale x2 (reduce el jitter del zoompan) -> zoompan -> tamaño final.
-    frames = max(1, int(round(dur * FPS)))
-    z, x, y = _zoompan_expr(movimiento, intens, frames)
-    vf = (f"scale={2 * w}:{2 * h}:force_original_aspect_ratio=increase,crop={2 * w}:{2 * h},"
-          f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={w}x{h}:fps={FPS},setsar=1")
-    if grade_f:
-        vf += f",{grade_f}"
-    vf += ",format=yuv420p"
-    _run(["ffmpeg", "-y", "-i", str(img), "-vf", vf, "-frames:v", str(frames), *codec, str(out)])
+    # Con overlay(s): pipeline de 2 pasos — 1) base con movimiento, 2) overlay con entrada/salida
+    # Para simplicidad, solo el primer overlay es animado; el resto se superpone estático centrado.
+    # Paso 1: base temporal
+    base_tmp = out.with_suffix(".base.mp4")
+    # Re-llamar sin overlays para generar base
+    _segmento_imagen(img, w, h, dur, base_tmp, movimiento=movimiento, intens=intens, grade=grade, overlays=None)
+
+    # Paso 2: superponer overlay(s)
+    # Tomamos el primer overlay como animado slideup/slidedown (tu ejemplo Tom que sube desde abajo)
+    ov = overlays_validos[0]
+    ov_src = Path(str(ov["src"]))
+    entrada = str(ov.get("entrada") or "slideup").lower()
+    salida = str(ov.get("salida") or "slidedown").lower()
+    ov_inicio = max(0.0, float(ov.get("inicio") or 0.3))
+    ov_dur = float(ov.get("duracion") or min(2.5, dur - ov_inicio - 0.2))
+    ov_dur = max(0.5, min(ov_dur, dur - ov_inicio))
+    escala = float(ov.get("escala") or 0.55)
+    # Escala del overlay relativo al ancho del video (ej. 0.55 = 55% del ancho)
+    ov_w = max(1, int(w * escala))
+    # Filtro para el overlay: escala + fade entrada/salida si es fade
+    ov_vf_parts: list[str] = [f"scale={ov_w}:-1"]
+    if entrada == "fade":
+        ov_vf_parts.append(f"fade=t=in:st=0:d=0.35:alpha=1")
+    if salida == "fade":
+        ov_vf_parts.append(f"fade=t=out:st={ov_dur - 0.35:.2f}:d=0.35:alpha=1")
+    ov_vf_parts.append("format=rgba")
+    ov_vf = ",".join(ov_vf_parts)
+
+    # Posición y animación del overlay: slideup desde abajo, slidedown hacia abajo, pop escala, fade alpha
+    # Usamos overlay filter con y animado via expresión t
+    if entrada == "slideup":
+        # Entra desde y=H (fuera abajo) a y=H-h-80 en 0.4s, luego queda centrado abajo
+        y_expr = f"if(lt(t,{ov_inicio:.2f}),H,if(lt(t,{ov_inicio+0.4:.2f}),H-(H-(H-h)/2-40)*(t-{ov_inicio:.2f})/0.4,(H-h)/2+20))"
+    elif entrada == "pop":
+        y_expr = "(H-h)/2"
+        # Pop se maneja con escala animada ya en el zoom, aquí solo posición
+    elif entrada == "slidedown":
+        y_expr = f"if(lt(t,{ov_inicio:.2f}),-h,if(lt(t,{ov_inicio+0.4:.2f}),-h+(H/2+40)*(t-{ov_inicio:.2f})/0.4,40))"
+    else:
+        y_expr = "(H-h)/2"  # centro
+
+    # Salida: si es slidedown, animar y hacia abajo al final del overlay
+    if salida == "slidedown":
+        ov_fin = ov_inicio + ov_dur
+        y_expr = f"if(gt(t,{ov_fin-0.35:.2f}),(H-h)/2+20+(H)*(t-{ov_fin-0.35:.2f})/0.35,{y_expr})"
+    elif salida == "slideup":
+        ov_fin = ov_inicio + ov_dur
+        y_expr = f"if(gt(t,{ov_fin-0.35:.2f}),(H-h)/2- H*(t-{ov_fin-0.35:.2f})/0.35,{y_expr})"
+
+    x_expr = "(W-w)/2"
+
+    # Construir filter_complex: base [0:v] + overlay [1:v] -> [out]
+    # Overlay solo visible entre ov_inicio y ov_inicio+ov_dur via enable
+    enable_expr = f"between(t,{ov_inicio:.2f},{ov_inicio+ov_dur:.2f})"
+    filter_complex = (
+        f"[1:v]{ov_vf}[ov];"
+        f"[0:v][ov]overlay=x='{x_expr}':y='{y_expr}':enable='{enable_expr}':format=yuv420[out]"
+    )
+    _run([
+        "ffmpeg", "-y",
+        "-i", str(base_tmp),
+        "-loop", "1", "-t", f"{dur:.3f}", "-i", str(ov_src),
+        "-filter_complex", filter_complex,
+        "-map", "[out]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+        "-c:a", "copy", "-shortest", "-t", f"{dur:.3f}", str(out)
+    ])
+    base_tmp.unlink(missing_ok=True)
+
+    # Overlays adicionales (si hay más de 1) se superponen estáticos centrados sin animación
+    for ov_extra in overlays_validos[1:]:
+        ov2_src = Path(str(ov_extra["src"]))
+        if not ov2_src.is_file():
+            continue
+        tmp2 = out.with_suffix(".tmp2.mp4")
+        out.rename(tmp2)
+        _run([
+            "ffmpeg", "-y",
+            "-i", str(tmp2),
+            "-loop", "1", "-t", f"{dur:.3f}", "-i", str(ov2_src),
+            "-filter_complex", f"[1:v]scale={int(w*0.35)}:-1,format=rgba[ov2];[0:v][ov2]overlay=(W-w)/2:(H-h)/2:shortest=1:format=yuv420[out2]",
+            "-map", "[out2]", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+            "-c:a", "copy", "-shortest", str(out)
+        ])
+        tmp2.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -291,8 +410,36 @@ def _resolver_efectos(escs: list[dict], preset_nombre: str) -> list[dict]:
         if grade not in GRADES:
             grade = "none"
 
+        # Overlays intra-escena estilo TikTok (ej. Tom que sube desde abajo): lista opcional
+        raw_overlays = ef.get("overlays")
+        overlays: list[dict] = []
+        if isinstance(raw_overlays, list):
+            for ov in raw_overlays:
+                if not isinstance(ov, dict) or not ov.get("src"):
+                    continue
+                entrada = str(ov.get("entrada") or "slideup").lower().strip()
+                if entrada not in OVERLAY_ENTRADAS:
+                    entrada = "slideup"
+                salida = str(ov.get("salida") or "slidedown").lower().strip()
+                if salida not in OVERLAY_SALIDAS:
+                    salida = "slidedown"
+                try:
+                    ov_inicio = max(0.0, float(ov.get("inicio", 0.3)))
+                except Exception:
+                    ov_inicio = 0.3
+                try:
+                    ov_dur = max(0.5, float(ov.get("duracion", 2.0)))
+                except Exception:
+                    ov_dur = 2.0
+                try:
+                    escala = max(0.2, min(1.0, float(ov.get("escala", 0.55))))
+                except Exception:
+                    escala = 0.55
+                overlays.append({"src": str(ov["src"]), "entrada": entrada, "salida": salida,
+                                 "inicio": ov_inicio, "duracion": ov_dur, "escala": escala})
+
         res.append({"movimiento": mov, "intensidad": round(intens, 3), "transicion": trans,
-                    "transicion_duracion": round(tdur, 3), "grade": grade})
+                    "transicion_duracion": round(tdur, 3), "grade": grade, "overlays": overlays})
 
     if res:
         res[-1]["transicion"] = "none"  # la última escena no tiene transición de salida
@@ -351,10 +498,12 @@ def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
             usadas.add(img)
         seg = tmp / f"{esc['id']}.mp4"
         _segmento_imagen(img, w, h, dur + t_salida + pad, seg,
-                         movimiento=ef["movimiento"], intens=ef["intensidad"], grade=ef["grade"])
+                         movimiento=ef["movimiento"], intens=ef["intensidad"], grade=ef["grade"],
+                         overlays=ef.get("overlays"))
         segmentos.append(seg)
         reporte.append({"id": esc["id"], "imagen": str(img) if img else None, "modo": modo,
-                        "duracion_segundos": round(float(dur), 3), **ef})
+                        "duracion_segundos": round(float(dur), 3), **{k: v for k, v in ef.items() if k != "overlays"},
+                        "overlays": ef.get("overlays", [])})
 
     if faltantes:
         print(f"[ensamblar] Aviso: sin imagen para {', '.join(faltantes)} (placeholder negro).",

@@ -42,8 +42,9 @@ workspace/
     └── <tema-slug>/               # ej. inflacion_y_deuda (una carpeta por idea/video)
         ├── guion.json             # el guion confirmado
         ├── prompts.txt            # prompts de imagen editables a mano
+        ├── descripcion.txt        # descripción TikTok + 5 hashtags (copia en transcripcion/)
         ├── audio/                 # mp3 por escena + narracion.mp3 + timings.json
-        ├── transcripcion/         # narracion.srt + narracion.json + palabras.json + narracion.ass
+        ├── transcripcion/         # narracion.srt + narracion.json + palabras.json + narracion.ass + descripcion.txt
         ├── imagenes/              # MM_SS_*.png por escena + reporte.json
         ├── revision/              # contact_sheet.png (montaje para aprobar imágenes)
         └── video/                 # final.mp4 + reporte_ensamblado.json
@@ -68,6 +69,7 @@ calcula la ruta a partir del guion. La carpeta del día se crea con la fecha del
   `scripts/generar_subtitulos.py` → `transcripcion/narracion.ass` y `ensamblar_video.py` los quema
   con `ffmpeg` (libass). El `.srt` queda como sidecar. Si el usuario pide sin subtítulos, respeta
   `parametros.subtitulos.enabled=false` o `--no-subtitulos`. No digas que no se puede quemar.
+- **Descripción TikTok automática**: cada video genera `descripcion.txt` (gancho reformulado + 5 hashtags virales EN) vía `scripts/generar_descripcion.py`. El usuario puede fijarlo en `parametros.descripcion_tiktok` / `hashtags` del guion o dejar que se autogenera a partir del título y primera narración.
 - No omitas la revisión post-producción: el usuario siempre ve el video antes de darlo por bueno.
 
 ## Principio de mínima intervención (importante para el costo en tokens)
@@ -182,6 +184,19 @@ Prioridad: flags CLI > `parametros.subtitulos` > default. El usuario puede pedir
 "cambia a blanco", "haz el hook más corto", o adjuntar una captura como modelo y tú traduces
 a estos parámetros. Si `enabled=false`, no se genera ni se quema.
 
+### Paso 3c — Generar descripción TikTok (gancho + 5 hashtags)
+
+```bash
+python scripts/generar_descripcion.py --guion <sesión>/guion.json
+# -> <sesión>/descripcion.txt  y  <sesión>/transcripcion/descripcion.txt
+# Contenido ejemplo:
+# This is the biggest lie about money 💰 • You need to know this.
+#
+# #money #finance #investing #economy #banking
+```
+
+Genera `descripcion.txt` con descripción corta (hook reformulado de la primera narración, máx 150 caracteres, con emoji) + 5 hashtags virales cortos en inglés, relacionados con el nicho/título. Por defecto autogenera; si `guion.json:parametros.descripcion_tiktok` o `hashtags` existen, los usa tal cual. Prioridad CLI > guion > auto. Este TXT es el que el usuario copia al publicar en TikTok. Se genera automáticamente en el pipeline (`descripcion` después de `subtitulos`) y queda como sidecar.
+
 ### Paso 3.5 — Revisar y aprobar los prompts de imagen (obligatorio)
 
 Antes de generar imágenes, exporta el archivo de prompts **editable a mano**:
@@ -292,14 +307,18 @@ del guion — **el audio nunca se desincroniza**. Formato: `vertical` → 1080x1
 
 | Tipo | Valores |
 |---|---|
-| Movimiento por escena (`zoompan`) | `static`, `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `kenburns` |
-| Transición de salida (`xfade`) | `none` (corte seco), `fade`, `dissolve`, `wipeleft`, `slideup`, `circleopen` |
+| Movimiento por escena (`zoompan`) | `static`, `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `kenburns`, `pop` (rebote), `slide_up` (entra desde abajo), `slide_down`, `shake` |
+| Transición de salida (`xfade`) | `none` (corte seco), `fade`, `dissolve`, `wipeleft`, `slideup`, `slideleft`, `slideright`, `slidedown`, `circleopen` |
 | Grading | `none`, `warm`, `cool` |
+| Overlay intra-escena (nuevo) | `slideup` (sube desde abajo, como Tom en tus capturas), `slidedown`, `fade`, `pop`, `wipeup` — se declara en `efectos.overlays: [{"src":"path.png","entrada":"slideup","salida":"slidedown","inicio":0.5,"duracion":2.0,"escala":0.55}]` |
 | Presets (`--preset`) | `suave` (default: Ken Burns lento 1.12x + fade 0.4s) · `dinamico` (movimientos 1.22x + transiciones variadas) · `off` (imagen fija, como la v1) |
 
+**Cómo decide el agente los efectos (no son fijos):** Fase 1 (Director Creativo IA) analiza idea + narración + imagen y escribe `efectos` por escena según guía: `zoom_in` lento para revelación clave, `pan_left` cambio de lugar, `pop` para dato que impacta, `slide_up` overlay para personaje que entra desde abajo (tu ejemplo 45K$ y REAL ESTATE VS STOCKS), `grade warm` solo para cierre inspirador, `grade none` por defecto para no desteñir. Si `efectos` está vacío, cae a preset. Puedes pedir "más pop en escena 3" o adjuntar captura y el agente traduce a `overlays`.
+
 **Prioridad:** `efectos` de la escena en el guion (escritos por la Fase 1, opcional) > `--preset` >
-comportamiento clásico. Ejemplo por escena:
-`"efectos": {"movimiento": "zoom_in", "intensidad": 1.15, "transicion": "dissolve", "grade": "none"}`.
+comportamiento clásico. Ejemplos:
+- Simple: `"efectos": {"movimiento": "zoom_in", "intensidad": 1.15, "transicion": "dissolve", "grade": "none"}`
+- Con overlay TikTok: `"efectos": {"movimiento": "static", "overlays": [{"src": "workspace/overlay_tom.png", "entrada": "slideup", "salida": "slidedown", "inicio": 0.4, "duracion": 2.2, "escala": 0.5}]}`
 
 **Subtítulos (nuevo, por defecto ON):**
 - Si `transcripcion/narracion.ass` existe (generado en Paso 3b), se quema con `subtitles=...` (libass).
@@ -336,9 +355,10 @@ comportamiento clásico. Ejemplo por escena:
 
 ## Verificación final
 
-- `<sesión>/guion.json` y `<sesión>/prompts.txt` existen.
+- `<sesión>/guion.json`, `<sesión>/prompts.txt` y `<sesión>/descripcion.txt` existen.
 - `<sesión>/audio/narracion.mp3` y `<sesión>/transcripcion/narracion.srt` existen;
-  `<sesión>/transcripcion/palabras.json` y `narracion.ass` existen (subtítulos palabra-a-palabra).
+  `<sesión>/transcripcion/palabras.json` y `narracion.ass` existen (subtítulos palabra-a-palabra);
+  `<sesión>/transcripcion/descripcion.txt` es copia del TXT principal.
 - `<sesión>/imagenes/` tiene una imagen por escena `MM_SS_*.png`.
 - **El usuario aprobó los prompts** (Paso 3.5) y **las imágenes** (Paso 4.5).
 - `<sesión>/video/final.mp4` existe, con subtítulos quemados por defecto y duración aproximada (el audio real manda).

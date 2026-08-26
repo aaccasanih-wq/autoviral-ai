@@ -115,12 +115,11 @@ Genera un guion con **escenas** numeradas. Cada escena debe tener:
 - `inicio_segundos` / `fin_segundos`: rango estimado dentro de la duración total.
 - `notas` (opcional): dirección, transición o emoción.
 - `efectos` (opcional, recomendado como decisión creativa): objeto con el movimiento/transición
-  de la escena — `{"movimiento": "zoom_in|zoom_out|pan_left|pan_right|kenburns|static",
-  "intensidad": 1.15, "transicion": "none|fade|dissolve|wipeleft|slideup|circleopen",
-  "transicion_duracion": 0.4, "grade": "none|warm|cool"}`. Propón efectos que refuerzan la
-  narración (ej. `zoom_in` lento en la revelación clave, `pan_left` en transiciones de lugar,
-  `grade: cool` para misterio, `warm` para finales inspiradores). Si omites el campo, se aplica el
-  preset `suave` de la Fase 2 (Ken Burns + crossfade), así que no hace falta definirlo en todas.
+  y overlays de la escena — `{"movimiento": "zoom_in|zoom_out|pan_left|pan_right|kenburns|static|pop|slide_up|slide_down|shake",
+  "intensidad": 1.15, "transicion": "none|fade|dissolve|wipeleft|slideup|slideleft|slideright|circleopen",
+  "transicion_duracion": 0.4, "grade": "none|warm|cool", "overlays": [{"src":"workspace/overlay.png","entrada":"slideup","salida":"slidedown","inicio":0.4,"duracion":2.0,"escala":0.55}]}`.
+  Propón efectos que refuerzan la narración (ej. `zoom_in` lento en la revelación clave, `pan_left` en transiciones de lugar,
+  `pop` para dato que impacta, `slide_up` overlay para personaje que entra desde abajo —como tu ejemplo Tom 45K$ y REAL ESTATE VS STOCKS donde el personaje sube y desaparece—, `grade: cool` para misterio, `warm` solo para cierre. **Los efectos se deciden distintamente para cada video por el agente IA según idea/narración/imagen, no son fijos**; si omites el campo, se aplica el preset `suave` (Ken Burns + crossfade).
 
 Reglas de redacción:
 
