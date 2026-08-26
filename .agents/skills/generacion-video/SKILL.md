@@ -91,6 +91,8 @@ preguntas: prompts e imágenes). Eso minimiza tokens.
 
 Ejecuta en este orden. Cada paso deriva sus rutas de `--guion <sesión>/guion.json`.
 
+> **Timeouts y robustez (v1.1):** el paso de imágenes con `QWEN_RPM=2` (throttle) tarda ~2 min por 4 escenas; el ensamblado con `zoompan`+`xfade`+`libass` para 60–90s de video tarda 2–4 min. **Usa siempre `timeout 600000` (10 min) en la tool Bash** para `generar_imagenes.py` y `ensamblar_video.py` para evitar cortes que obliguen a re-runs. Todos los scripts ahora hacen fallback automático a `imageio-ffmpeg` si `ffmpeg` no está en el PATH, por lo que el pipeline debe funcionar sin correcciones manuales (salvo las 2 preguntas obligatorias de aprobación).
+
 ### Paso 1 — Verificar el entorno
 
 ```bash
@@ -99,8 +101,7 @@ python scripts/verificar_entorno.py
 
 Comprueba dependencias (`edge-tts`, `faster-whisper`, `google-genai`, `imageio-ffmpeg`), `ffmpeg`
 (con libass para subtítulos) y las herramientas MCP. Si falta algo, informa al usuario qué instalar
-(ver `README.md` → Prerrequisitos). Si `ffmpeg` no tiene `subtitles`/`ass`, instala
-`pip install imageio-ffmpeg` — ese binario trae libass y lo copia a `ffmpeg`.
+(ver `README.md` → Prerrequisitos). Desde v1.1, `bash setup.sh` vincula automáticamente el binario de `imageio-ffmpeg` a `.venv/bin/ffmpeg` (con `libass`) si no hay ffmpeg del sistema, por lo que **no hace falta instalar ffmpeg manualmente** en la mayoría de casos. `verificar_entorno.py` considera ese fallback como `OK`. Si `ffmpeg` no tiene `subtitles`/`ass`, instala `pip install imageio-ffmpeg` — ese binario trae libass y `setup.sh` lo vincula.
 
 ### Paso 2 — Generar audio narrado (TTS modular)
 
@@ -266,6 +267,7 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
 - **prompt_extend:** por defecto **False** (`QWEN_PROMPT_EXTEND=false` en `.env` o `--prompt-extend`
   para activarlo). La reescritura automática del prompt por parte del modelo añade varianza entre
   escenas; desactivada, respeta tu prompt literal → más consistencia.
+- **Referencia con personaje (crítico):** cuando hay `imagen_referencia` (ej. Tom gato), el script añade automáticamente a cada prompt `Replicate the exact character and art style from the reference image(s). Keep the main character identical...` **pero solo funciona si la ficha `CHARACTER:` del guion describe al mismo personaje de la referencia** (ej. `CHARACTER: Tom, a gray and white anthropomorphic cat...`). Si la ficha dice `Alex humano` y la referencia es un gato, el modelo priorizará el texto y la referencia se ignorará — fue lo ocurrido en `us-debt-40-trillion`. La Fase 1 debe derivar la ficha de la referencia.
 - **Nombrado:** `MM_SS_<slug>.png`. Si una imagen falla, el script deja el detalle en
   `<sesión>/imagenes/reporte.json`.
 

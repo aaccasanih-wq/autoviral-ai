@@ -1,6 +1,6 @@
 ---
 name: generacion-video
-description: Ejecuta el pipeline técnico completo de producción de un video corto a partir de un guion ya confirmado — narración con motor TTS modular (edge-tts o Google Cloud TTS, con tono configurable por guion), transcripción a .srt (faster-whisper), imágenes por escena con proveedor intercambiable (Gemini Nano Banana 2 o Alibaba Qwen, con seed estable por video) y ensamblaje del video final (FFmpeg/Kinocut). Antes de generar imágenes pide al usuario que apruebe los prompts (y le ofrece editarlos), y después pide que apruebe las imágenes — si no está conforme, regenera con su feedback. Úsala solo en la Fase 2 — nunca crea ideas creativas nuevas.
+description: Ejecuta el pipeline técnico completo de producción de un video corto a partir de un guion ya confirmado — narración con motor TTS modular (edge-tts o Google Cloud TTS, con tono configurable por guion), transcripción a .srt/.ass palabra-a-palabra (faster-whisper), subtítulos TikTok quemados por defecto (ASS amarillo + hook rojo superior, word-by-word), imágenes por escena con proveedor intercambiable (Gemini Nano Banana 2 o Alibaba Qwen, con seed estable por video) y ensamblaje del video final (FFmpeg con libass/Kinocut). Antes de generar imágenes pide al usuario que apruebe los prompts (y le ofrece editarlos), y después pide que apruebe las imágenes — si no está conforme, regenera con su feedback. Úsala solo en la Fase 2 — nunca crea ideas creativas nuevas.
 whenToUse: El usuario ya tiene un guion confirmado (de /ideacion-video o pegado) y quiere generarlo, o quiere aplicar ajustes post-producción a un video ya generado.
 ---
 
@@ -42,8 +42,9 @@ workspace/
     └── <tema-slug>/               # ej. inflacion_y_deuda (una carpeta por idea/video)
         ├── guion.json             # el guion confirmado
         ├── prompts.txt            # prompts de imagen editables a mano
+        ├── descripcion.txt        # descripción TikTok + 5 hashtags (copia en transcripcion/)
         ├── audio/                 # mp3 por escena + narracion.mp3 + timings.json
-        ├── transcripcion/         # narracion.srt + narracion.json
+        ├── transcripcion/         # narracion.srt + narracion.json + palabras.json + narracion.ass + descripcion.txt
         ├── imagenes/              # MM_SS_*.png por escena + reporte.json
         ├── revision/              # contact_sheet.png (montaje para aprobar imágenes)
         └── video/                 # final.mp4 + reporte_ensamblado.json
@@ -63,10 +64,12 @@ calcula la ruta a partir del guion. La carpeta del día se crea con la fecha del
 - **Nunca** generas ideas creativas nuevas, no reescribes el guion ni cambias su contenido salvo
   que el usuario lo pida explícitamente como ajuste.
 - **Nunca** inventes timestamps ni narraciones: usa el `guion.json` como fuente de verdad.
-- **No preguntes si se queman los subtítulos**: con el ffmpeg actual no se puede (compilado sin
-  libass, faltaría descargar otro ffmpeg). Genera siempre el `.srt` como sidecar y, en el
-  ensamblado, el script lo omite automáticamente — no ofrezcas la opción ni lo menciones como
-  pendiente.
+- **Subtítulos quemados por defecto**: el pipeline genera y quema subtítulos estilo TikTok
+  (palabra-a-palabra amarillo #FFFF00 + borde negro + hook superior rojo) vía
+  `scripts/generar_subtitulos.py` → `transcripcion/narracion.ass` y `ensamblar_video.py` los quema
+  con `ffmpeg` (libass). El `.srt` queda como sidecar. Si el usuario pide sin subtítulos, respeta
+  `parametros.subtitulos.enabled=false` o `--no-subtitulos`. No digas que no se puede quemar.
+- **Descripción TikTok automática**: cada video genera `descripcion.txt` (gancho reformulado + 5 hashtags virales EN) vía `scripts/generar_descripcion.py`. El usuario puede fijarlo en `parametros.descripcion_tiktok` / `hashtags` del guion o dejar que se autogenera a partir del título y primera narración.
 - No omitas la revisión post-producción: el usuario siempre ve el video antes de darlo por bueno.
 
 ## Principio de mínima intervención (importante para el costo en tokens)
@@ -88,14 +91,17 @@ preguntas: prompts e imágenes). Eso minimiza tokens.
 
 Ejecuta en este orden. Cada paso deriva sus rutas de `--guion <sesión>/guion.json`.
 
+> **Timeouts y robustez (v1.1):** el paso de imágenes con `QWEN_RPM=2` (throttle) tarda ~2 min por 4 escenas; el ensamblado con `zoompan`+`xfade`+`libass` para 60–90s de video tarda 2–4 min. **Usa siempre `timeout 600000` (10 min) en la tool Bash** para `generar_imagenes.py` y `ensamblar_video.py` para evitar cortes que obliguen a re-runs. Todos los scripts ahora hacen fallback automático a `imageio-ffmpeg` si `ffmpeg` no está en el PATH, por lo que el pipeline debe funcionar sin correcciones manuales (salvo las 2 preguntas obligatorias de aprobación).
+
 ### Paso 1 — Verificar el entorno
 
 ```bash
 python scripts/verificar_entorno.py
 ```
 
-Comprueba dependencias (`edge-tts`, `faster-whisper`, `google-genai`), `ffmpeg` y las herramientas
-MCP. Si falta algo, informa al usuario qué instalar (ver `README.md` → Prerrequisitos).
+Comprueba dependencias (`edge-tts`, `faster-whisper`, `google-genai`, `imageio-ffmpeg`), `ffmpeg`
+(con libass para subtítulos) y las herramientas MCP. Si falta algo, informa al usuario qué instalar
+(ver `README.md` → Prerrequisitos). Desde v1.1, `bash setup.sh` vincula automáticamente el binario de `imageio-ffmpeg` a `.venv/bin/ffmpeg` (con `libass`) si no hay ffmpeg del sistema, por lo que **no hace falta instalar ffmpeg manualmente** en la mayoría de casos. `verificar_entorno.py` considera ese fallback como `OK`. Si `ffmpeg` no tiene `subtitles`/`ass`, instala `pip install imageio-ffmpeg` — ese binario trae libass y `setup.sh` lo vincula.
 
 ### Paso 2 — Generar audio narrado (TTS modular)
 
@@ -128,15 +134,69 @@ Genera un `.mp3` por escena y `narracion.mp3` en `<sesión>/audio/`. El **motor 
 > Alternativas con free tier: Azure TTS F0 (500k chars/mes), ElevenLabs (~10k chars/mes),
 > Amazon Polly (1M chars/mes solo el primer año). OpenAI TTS no tiene free tier.
 
-### Paso 3 — Transcribir a `.srt` (faster-whisper)
+### Paso 3 — Transcribir a `.srt` + `palabras.json` (faster-whisper)
 
 ```bash
 python scripts/transcribir.py \
   --audio <sesión>/audio/narracion.mp3 --outdir <sesión>/transcripcion
+# Opcional: --no-word-timestamps para desactivar palabra-a-palabra
 ```
 
-Produce `narracion.srt` y `narracion.json` (duración real por frase). Los subtítulos NO se queman
-sobre el video (ver Límites); quedan como sidecar.
+Produce `narracion.srt` (frases), `narracion.json` y `palabras.json` (word-level con
+`word_timestamps=True` para subtítulos karaoke). Si el modelo no da word timestamps, hace
+fallback proporcional.
+
+### Paso 3b — Generar subtítulos ASS palabra-a-palabra (estilo TikTok)
+
+```bash
+python scripts/generar_subtitulos.py --guion <sesión>/guion.json
+# -> <sesión>/transcripcion/narracion.ass
+# Opciones: --color amarillo|blanco|#RRGGBB --hook "TEXTO ROJO" --hook-duration 3.0 --font "Arial Black"
+```
+
+Genera `narracion.ass` con:
+
+- **Abajo**: una palabra por evento, centrada, `WWord` amarillo (#FFFF00) por defecto,
+  borde negro grueso (Outline 5), sombra, negrita, `Alignment 2` (bottom-center), `PlayRes 1080x1920`.
+  Cada palabra dura desde su `start` hasta el siguiente `start` (mín 0.18s) → misma imagen cambia
+  de subtítulo como en tus capturas (`no` → `corporations` → `borrow`...).
+- **Arriba**: `TopHook` rojo (#FF2B2B) borde blanco, mayúsculas, `Alignment 8` (top-center),
+  visible `hookDuration` segundos (default 3s). Texto = `parametros.subtitulos.hook` o,
+  si es `null`, copia la primera frase de la narración (hook llamativo automático).
+
+Configurable vía `guion.json`:
+
+```json
+"parametros": {
+  "subtitulos": {
+    "enabled": true,
+    "color": "amarillo",
+    "font": "Arial Black",
+    "fontSize": 64,
+    "outline": 5,
+    "hook": "WHO REALLY RUNS THE WORLD?",
+    "hookColor": "rojo",
+    "hookDuration": 3.0
+  }
+}
+```
+
+Prioridad: flags CLI > `parametros.subtitulos` > default. El usuario puede pedir
+"cambia a blanco", "haz el hook más corto", o adjuntar una captura como modelo y tú traduces
+a estos parámetros. Si `enabled=false`, no se genera ni se quema.
+
+### Paso 3c — Generar descripción TikTok (gancho + 5 hashtags)
+
+```bash
+python scripts/generar_descripcion.py --guion <sesión>/guion.json
+# -> <sesión>/descripcion.txt  y  <sesión>/transcripcion/descripcion.txt
+# Contenido ejemplo:
+# This is the biggest lie about money 💰 • You need to know this.
+#
+# #money #finance #investing #economy #banking
+```
+
+Genera `descripcion.txt` con descripción corta (hook reformulado de la primera narración, máx 150 caracteres, con emoji) + 5 hashtags virales cortos en inglés, relacionados con el nicho/título. Por defecto autogenera; si `guion.json:parametros.descripcion_tiktok` o `hashtags` existen, los usa tal cual. Prioridad CLI > guion > auto. Este TXT es el que el usuario copia al publicar en TikTok. Se genera automáticamente en el pipeline (`descripcion` después de `subtitulos`) y queda como sidecar.
 
 ### Paso 3.5 — Revisar y aprobar los prompts de imagen (obligatorio)
 
@@ -181,7 +241,8 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
   existen, los usa).
 - **Límite de peticiones:** el script **espacia** las peticiones según `QWEN_RPM` (por defecto
   **2/min** en `qwen-image-2.0`; 5/min en `qwen-image-3.0`). Con 5 escenas y 2/min tarda ~2 min;
-  es normal. Si el usuario lo pide, ajustá `QWEN_RPM` en `.env`.
+  es normal. Si el usuario lo pide, ajustá `QWEN_RPM` en `.env`. Si pasas más de 3 referencias
+  a Qwen, el script trunca automáticamente a 3 (máximo del modelo) con aviso.
 - **Estilo consistente / imagen de referencia:** si el usuario quiere que las imágenes sigan un
   estilo de una o varias imágenes de referencia (pueden estar **fuera del proyecto**, p. ej. en
   `~/Desktop/...`), pásalas con `--referencia` (repetible o separadas por comas). Se envían al
@@ -206,6 +267,7 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
 - **prompt_extend:** por defecto **False** (`QWEN_PROMPT_EXTEND=false` en `.env` o `--prompt-extend`
   para activarlo). La reescritura automática del prompt por parte del modelo añade varianza entre
   escenas; desactivada, respeta tu prompt literal → más consistencia.
+- **Referencia con personaje (crítico):** cuando hay `imagen_referencia` (ej. Tom gato), el script añade automáticamente a cada prompt `Replicate the exact character and art style from the reference image(s). Keep the main character identical...` **pero solo funciona si la ficha `CHARACTER:` del guion describe al mismo personaje de la referencia** (ej. `CHARACTER: Tom, a gray and white anthropomorphic cat...`). Si la ficha dice `Alex humano` y la referencia es un gato, el modelo priorizará el texto y la referencia se ignorará — fue lo ocurrido en `us-debt-40-trillion`. La Fase 1 debe derivar la ficha de la referencia.
 - **Nombrado:** `MM_SS_<slug>.png`. Si una imagen falla, el script deja el detalle en
   `<sesión>/imagenes/reporte.json`.
 
@@ -228,31 +290,44 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --contact-sheet
 4. **Vuelve a generar el contact sheet** y **repregunta**. **Itera hasta el visto bueno**, y recién
    entonces continúa.
 
-### Paso 5 — Ensamblar el video final (FFmpeg / Kinocut MCP)
+### Paso 5 — Ensamblar el video final (FFmpeg con subtítulos quemados)
 
 ```bash
 python scripts/ensamblar_video.py --guion <sesión>/guion.json --formato vertical
+# O sin subtítulos: --no-subtitulos
 # -> <sesión>/video/final.mp4
 ```
 
 Aplica **efectos de edición** (movimiento Ken Burns por escena + transiciones entre escenas +
-fades globales + grading opcional), superpone la narración y exporta. La duración de cada escena
-es la real de su audio y las transiciones se calculan sobre los tiempos del guion — **el audio
-nunca se desincroniza**. **No quema subtítulos** (ver Límites): deja el `.srt` como sidecar.
-Formato: `vertical` → 1080x1920 (9:16), `horizontal` → 1920x1080 (16:9). MP4 H.264+AAC.
+fades globales + grading opcional), superpone la narración, **quema los subtítulos ASS**
+(`transcripcion/narracion.ass` palabra-a-palabra, si existe; si no, `narracion.srt`) y exporta.
+La duración de cada escena es la real de su audio y las transiciones se calculan sobre los tiempos
+del guion — **el audio nunca se desincroniza**. Formato: `vertical` → 1080x1920 (9:16),
+`horizontal` → 1920x1080 (16:9). MP4 H.264+AAC. Requiere `ffmpeg` con `libass` (`pip install imageio-ffmpeg`).
 
 **Catálogo de efectos** (el script lo lista con `--list-efectos`):
 
 | Tipo | Valores |
 |---|---|
-| Movimiento por escena (`zoompan`) | `static`, `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `kenburns` |
-| Transición de salida (`xfade`) | `none` (corte seco), `fade`, `dissolve`, `wipeleft`, `slideup`, `circleopen` |
+| Movimiento por escena (`zoompan`) | `static`, `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `kenburns`, `pop` (rebote), `slide_up` (entra desde abajo), `slide_down`, `shake` |
+| Transición de salida (`xfade`) | `none` (corte seco), `fade`, `dissolve`, `wipeleft`, `slideup`, `slideleft`, `slideright`, `slidedown`, `circleopen` |
 | Grading | `none`, `warm`, `cool` |
+| Overlay intra-escena (nuevo) | `slideup` (sube desde abajo, como Tom en tus capturas), `slidedown`, `fade`, `pop`, `wipeup` — se declara en `efectos.overlays: [{"src":"path.png","entrada":"slideup","salida":"slidedown","inicio":0.5,"duracion":2.0,"escala":0.55}]` |
 | Presets (`--preset`) | `suave` (default: Ken Burns lento 1.12x + fade 0.4s) · `dinamico` (movimientos 1.22x + transiciones variadas) · `off` (imagen fija, como la v1) |
 
+**Cómo decide el agente los efectos (no son fijos):** Fase 1 (Director Creativo IA) analiza idea + narración + imagen y escribe `efectos` por escena según guía: `zoom_in` lento para revelación clave, `pan_left` cambio de lugar, `pop` para dato que impacta, `slide_up` overlay para personaje que entra desde abajo (tu ejemplo 45K$ y REAL ESTATE VS STOCKS), `grade warm` solo para cierre inspirador, `grade none` por defecto para no desteñir. Si `efectos` está vacío, cae a preset. Puedes pedir "más pop en escena 3" o adjuntar captura y el agente traduce a `overlays`.
+
 **Prioridad:** `efectos` de la escena en el guion (escritos por la Fase 1, opcional) > `--preset` >
-comportamiento clásico. Ejemplo por escena:
-`"efectos": {"movimiento": "zoom_in", "intensidad": 1.15, "transicion": "dissolve", "grade": "cool"}`.
+comportamiento clásico. Ejemplos:
+- Simple: `"efectos": {"movimiento": "zoom_in", "intensidad": 1.15, "transicion": "dissolve", "grade": "none"}`
+- Con overlay TikTok: `"efectos": {"movimiento": "static", "overlays": [{"src": "workspace/overlay_tom.png", "entrada": "slideup", "salida": "slidedown", "inicio": 0.4, "duracion": 2.2, "escala": 0.5}]}`
+
+**Subtítulos (nuevo, por defecto ON):**
+- Si `transcripcion/narracion.ass` existe (generado en Paso 3b), se quema con `subtitles=...` (libass).
+- Si no, usa `narracion.srt` como fallback.
+- Desactivar: `parametros.subtitulos.enabled=false` en `guion.json` o `--no-subtitulos` en CLI.
+- Cambiar color/hook: `parametros.subtitulos.color`, `hook`, `hookColor`, `hookDuration`,
+  o flags `--color`, `--hook` en `generar_subtitulos.py`.
 
 **Flujo de decisión de efectos (agente + usuario):**
 1. Si el guion trae `efectos` por escena, respétalos — son decisiones creativas de la Fase 1.
@@ -273,16 +348,20 @@ comportamiento clásico. Ejemplo por escena:
      `guion.json` o cambia `--preset`, y re-ensambla (usa `--salida final_v2.mp4` para comparar).
    - **Reemplazo de imagen:** regenera esa escena (`--solo <id>`) y re-ensambla.
    - **Cambio de duración:** ajusta `duracion_segundos` y narraciones, regenera audio → transcripción
-     → prompts → imágenes → ensamblado.
+     → subtítulos → prompts → imágenes → ensamblado.
    - **Cambio de voz:** repite el Paso 2 con otro `--voz`.
    - **Cambio de estilo:** cambia/añade `--referencia` (o edita `prompts.txt`) y regenera imágenes.
+   - **Subtítulos:** "hazlos blancos", "quita el hook", "más grandes" → edita `parametros.subtitulos`
+     en `guion.json` o regenera con `generar_subtitulos.py --color blanco --no-hook` y re-ensambla.
 3. Iterar hasta que el usuario dé por bueno el video.
 
 ## Verificación final
 
-- `<sesión>/guion.json` y `<sesión>/prompts.txt` existen.
-- `<sesión>/audio/narracion.mp3` y `<sesión>/transcripcion/narracion.srt` existen (srt sin quemar).
+- `<sesión>/guion.json`, `<sesión>/prompts.txt` y `<sesión>/descripcion.txt` existen.
+- `<sesión>/audio/narracion.mp3` y `<sesión>/transcripcion/narracion.srt` existen;
+  `<sesión>/transcripcion/palabras.json` y `narracion.ass` existen (subtítulos palabra-a-palabra);
+  `<sesión>/transcripcion/descripcion.txt` es copia del TXT principal.
 - `<sesión>/imagenes/` tiene una imagen por escena `MM_SS_*.png`.
 - **El usuario aprobó los prompts** (Paso 3.5) y **las imágenes** (Paso 4.5).
-- `<sesión>/video/final.mp4` existe, con la duración aproximada (el audio real manda).
+- `<sesión>/video/final.mp4` existe, con subtítulos quemados por defecto y duración aproximada (el audio real manda).
 - El usuario dio su aprobación final (si no, no cierres — ofrece ajustes).

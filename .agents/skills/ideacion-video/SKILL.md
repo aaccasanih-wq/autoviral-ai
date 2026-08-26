@@ -60,6 +60,7 @@ Pregunta lo mínimo necesario (no hagas un interrogatorio). Determina:
   anota sus **rutas** (una o varias; pueden estar fuera del proyecto, p. ej. en `~/Desktop/...`).
   Guárdalas en `parametros.imagen_referencia` como **lista** de rutas (o un string) para fijar el
   estilo de forma consistente.
+  **CRÍTICO — referencia con personaje:** si la(s) referencia(s) muestra(n) un personaje (ej. Tom, el gato gris y blanco de Tom y Jerry), **debes inferir y describir exactamente a ese personaje** para la ficha `CHARACTER:`. No inventes otro (ej. Alex humano) porque el prompt de texto entrará en conflicto con la imagen de referencia y el modelo la ignorará. Si no estás seguro del personaje, pide al usuario que lo describa en una frase y úsala literal para la ficha. La Fase 2 reforzará automáticamente cada prompt con “Replicate the exact character from the reference image(s)”, pero la ficha debe coincidir para que funcione.
 
 ### 2. Generar o refinar la idea
 
@@ -87,19 +88,11 @@ Antes de redactar, confirma y deja constancia de:
 | Público objetivo | `parametros.publico` | p. ej. `adultos 25-40` |
 | Imagen de referencia (opcional) | `parametros.imagen_referencia` | ruta a un `.png/.jpg/...` cuyo estilo animado se replicará |
 | Tono de voz (opcional) | `parametros.tts` | objeto: `{"motor": "edge"\|"gcp", "voz": "...", "rate": "-10%", "pitch": "-2"}` según la emoción del guion |
-| Subtítulos (opcional) | `parametros.subtitulos` | objeto: `{"enabled": true, "color": "amarillo\|blanco\|#RRGGBB", "font": "Arial Black", "fontSize": 64, "outline": 5, "hook": "TEXTO ROJO SUPERIOR", "hookColor": "rojo", "hookDuration": 3.0}` para quemado TikTok palabra-a-palabra |
 
 > **Tono de voz según el video (recomendado):** define `parametros.tts` acorde a la emoción del
 > guion — misterio/drama: voz grave con `rate` negativo y `pitch` negativo; motivación: voz
 > energética con `rate` positivo; finanzas/educación: voz neutra a ritmo natural. La Fase 2 lo
 > consume `generar_audio.py` automáticamente (prioridad: CLI > guion > `.env`).
-
-> **Subtítulos TikTok (nuevo, por defecto ON):** define `parametros.subtitulos` para el estilo
-> de subtítulos quemados palabra-a-palabra (amarillo abajo + hook rojo arriba). Ej.:
-> `{"color": "amarillo", "hook": "WHO REALLY RUNS THE WORLD?", "hookDuration": 3.0}`.
-> La Fase 2 lo consume `generar_subtitulos.py` → `transcripcion/narracion.ass` y
-> `ensamblar_video.py` lo quema por defecto (prioridad: CLI > guion). Si no se define,
-> usa amarillo #FFFF00 y hook automático de la primera frase.
 
 > El **proveedor de imágenes** (Gemini o Alibaba Qwen) **no** se guarda en el guion: se elige al
 > producir, en la Fase 2, vía `IMAGEN_PROVEEDOR` (`gemini` o `qwen`) o el flag `--proveedor` de
@@ -115,11 +108,12 @@ Genera un guion con **escenas** numeradas. Cada escena debe tener:
 - `inicio_segundos` / `fin_segundos`: rango estimado dentro de la duración total.
 - `notas` (opcional): dirección, transición o emoción.
 - `efectos` (opcional, recomendado como decisión creativa): objeto con el movimiento/transición
-  y overlays de la escena — `{"movimiento": "zoom_in|zoom_out|pan_left|pan_right|kenburns|static|pop|slide_up|slide_down|shake",
-  "intensidad": 1.15, "transicion": "none|fade|dissolve|wipeleft|slideup|slideleft|slideright|circleopen",
-  "transicion_duracion": 0.4, "grade": "none|warm|cool", "overlays": [{"src":"workspace/overlay.png","entrada":"slideup","salida":"slidedown","inicio":0.4,"duracion":2.0,"escala":0.55}]}`.
-  Propón efectos que refuerzan la narración (ej. `zoom_in` lento en la revelación clave, `pan_left` en transiciones de lugar,
-  `pop` para dato que impacta, `slide_up` overlay para personaje que entra desde abajo —como tu ejemplo Tom 45K$ y REAL ESTATE VS STOCKS donde el personaje sube y desaparece—, `grade: cool` para misterio, `warm` solo para cierre. **Los efectos se deciden distintamente para cada video por el agente IA según idea/narración/imagen, no son fijos**; si omites el campo, se aplica el preset `suave` (Ken Burns + crossfade).
+  de la escena — `{"movimiento": "zoom_in|zoom_out|pan_left|pan_right|kenburns|static",
+  "intensidad": 1.15, "transicion": "none|fade|dissolve|wipeleft|slideup|circleopen",
+  "transicion_duracion": 0.4, "grade": "none|warm|cool"}`. Propón efectos que refuerzan la
+  narración (ej. `zoom_in` lento en la revelación clave, `pan_left` en transiciones de lugar,
+  `grade: cool` para misterio, `warm` para finales inspiradores). Si omites el campo, se aplica el
+  preset `suave` de la Fase 2 (Ken Burns + crossfade), así que no hace falta definirlo en todas.
 
 Reglas de redacción:
 
@@ -144,6 +138,7 @@ Reglas de redacción:
   y guarda su ruta en `parametros.imagen_referencia`. Si la ruta es relativa, escríbela relativa a
   la raíz del proyecto. Las referencias se envían como imágenes reales al modelo generador
   (anclaje visual directo), no como descripciones textuales.
+  **Si la referencia contiene un personaje (ej. Tom), la ficha `CHARACTER:` debe describir a ESE personaje** (ej. `CHARACTER: Tom, a gray and white anthropomorphic cat with large green eyes, pink nose, white muzzle and belly, thin tail, expressive cartoon style.`). No uses un humano genérico si la referencia es un animal/antropomórfico. El script `generar_imagenes.py` añade automáticamente “Replicate the exact character from the reference” a cada prompt cuando hay referencias, pero solo funciona si la ficha coincide.
 
 ### 5. Mostrar y pedir confirmación explícita
 
@@ -181,8 +176,7 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
     "estilo_visual": "cinemático natural, luz suave",
     "publico": "adultos 25-40",
     "imagen_referencia": [],   // opcional: ruta(s) .png/.jpg/.webp cuyo estilo se replicará (string o lista)
-    "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"},   // opcional
-    "subtitulos": {"enabled": true, "color": "amarillo", "font": "Arial Black", "hook": "WHO REALLY RUNS THE WORLD?", "hookColor": "rojo", "hookDuration": 3.0} // opcional, estilo TikTok
+    "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"}   // opcional
   },
   "escenas": [
     {

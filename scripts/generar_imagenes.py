@@ -306,6 +306,24 @@ def _generar(proveedor: str, client, apikey: str | None, modelo: str, prompt: st
                          seed=seed, prompt_extend=prompt_extend)
 
 
+def _ffmpeg_bin() -> str:
+    """Binario ffmpeg: PATH o fallback imageio-ffmpeg/.venv."""
+    p = __import__("shutil").which("ffmpeg")
+    if p:
+        return p
+    try:
+        import imageio_ffmpeg
+        pp = imageio_ffmpeg.get_ffmpeg_exe()
+        if pp and Path(pp).is_file():
+            return pp
+    except Exception:
+        pass
+    for cand in (Path(".venv/bin/ffmpeg"), Path(".venv/Scripts/ffmpeg.exe"), Path(".venv/Scripts/ffmpeg")):
+        if cand.is_file():
+            return str(cand)
+    return "ffmpeg"
+
+
 # ---------------------------------------------------------------------------
 # Contact sheet (montaje para revisión del usuario)
 # ---------------------------------------------------------------------------
@@ -330,10 +348,10 @@ def generar_contact_sheet(outdir: Path, out: Path, max_cols: int = 3) -> bool:
     # Crear el directorio ANTES de que ffmpeg escriba el archivo de salida.
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
-        proc = subprocess.run(["ffmpeg", "-y", *inputs, "-filter_complex", "".join(vf),
+        proc = subprocess.run([_ffmpeg_bin(), "-y", *inputs, "-filter_complex", "".join(vf),
                                "-frames:v", "1", str(out)], capture_output=True, text=True)
     except FileNotFoundError:
-        print("[imagenes] Contact sheet: 'ffmpeg' no está en el PATH.", file=sys.stderr)
+        print("[imagenes] Contact sheet: 'ffmpeg' no está en el PATH (ni en imageio-ffmpeg). Ejecuta bash setup.sh.", file=sys.stderr)
         return False
     if proc.returncode != 0:
         print(f"[imagenes] Contact sheet: ffmpeg falló: {proc.stderr[-500:]}", file=sys.stderr)
@@ -496,6 +514,10 @@ def main(argv: list[str] | None = None) -> int:
         # Prompt final: el editado por el usuario (prompts.txt) si existe; si no, el del guion.
         base_prompt = prompts_editados.get(esc["id"]) or esc["prompt_imagen"]
         prompt = f"{base_prompt}. Aspect ratio {ratio}. High quality, crisp details."
+        # Si hay referencias, instruir explícitamente al modelo para que replique personaje y estilo.
+        # Sin esto, el modelo puede ignorar la(s) imagen(es) de referencia cuando el texto describe otro personaje (ej. Alex humano vs Tom gato).
+        if referencias:
+            prompt += " Replicate the exact character and art style from the reference image(s). Keep the main character identical in appearance to the reference across all scenes."
         if args.estilo:
             prompt += f"\nAjuste solicitado por el usuario: {args.estilo}"
         throttle.esperar()  # respetar el RPM antes de cada petición

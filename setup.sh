@@ -31,14 +31,33 @@ else
   echo "    .env ya existe; no se sobrescribe."
 fi
 
-echo "==> Verificando FFmpeg ..."
+echo "==> Configurando FFmpeg (imageio-ffmpeg fallback) ..."
 if command -v ffmpeg >/dev/null 2>&1; then
-  echo "    ffmpeg OK: $(ffmpeg -version 2>&1 | head -1)"
+  echo "    ffmpeg OK (sistema): $(ffmpeg -version 2>&1 | head -1)"
 else
-  echo "    AVISO: ffmpeg NO está en el PATH. Es necesario para ensamblar el video."
-  echo "    En macOS:  brew install ffmpeg"
-  echo "    En Ubuntu: sudo apt install ffmpeg"
-  echo "    (edge-tts y la transcripción funcionan sin ffmpeg; el ensamblado no.)"
+  # Intentar vincular el binario de imageio-ffmpeg a .venv/bin/ffmpeg
+  if .venv/bin/python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())" >/dev/null 2>&1; then
+    FFMPEG_BIN=$(.venv/bin/python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
+    if [[ -f "$FFMPEG_BIN" ]]; then
+      ln -sf "$FFMPEG_BIN" .venv/bin/ffmpeg
+      ln -sf .venv/bin/ffmpeg .venv/bin/ffprobe 2>/dev/null || true
+      chmod +x .venv/bin/ffmpeg 2>/dev/null || true
+      echo "    ffmpeg vinculado desde imageio-ffmpeg: $FFMPEG_BIN"
+      echo "    (ffmpeg disponible vía .venv/bin/ffmpeg con libass para subtítulos)"
+    fi
+  fi
+  if command -v ffmpeg >/dev/null 2>&1 || [[ -f .venv/bin/ffmpeg ]]; then
+    echo "    ffmpeg OK: $(.venv/bin/ffmpeg -version 2>&1 | head -1)"
+  else
+    echo "    AVISO: ffmpeg NO está en el PATH ni en imageio-ffmpeg."
+    echo "    En macOS:  brew install ffmpeg"
+    echo "    En Ubuntu: sudo apt install ffmpeg"
+    echo "    (edge-tts y la transcripción funcionan sin ffmpeg; el ensamblado requiere ffmpeg con libass.)"
+  fi
+fi
+# Asegurar que .venv/bin esté en PATH para los scripts que usan fallback
+if [[ -f .venv/bin/ffmpeg ]]; then
+  export PATH="$RAIZ/.venv/bin:$PATH"
 fi
 
 echo "==> Chequeo del entorno ..."

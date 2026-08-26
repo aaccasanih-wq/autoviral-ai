@@ -105,12 +105,33 @@ def _imprimir_catalogo() -> None:
 # Utilidades ffmpeg
 # ---------------------------------------------------------------------------
 
+def _ffmpeg_bin() -> str:
+    """Binario ffmpeg: PATH o fallback imageio-ffmpeg/.venv."""
+    p = shutil.which("ffmpeg")
+    if p:
+        return p
+    try:
+        import imageio_ffmpeg
+        pp = imageio_ffmpeg.get_ffmpeg_exe()
+        if pp and Path(pp).is_file():
+            return pp
+    except Exception:
+        pass
+    for cand in (Path(".venv/bin/ffmpeg"), Path(".venv/Scripts/ffmpeg.exe"), Path(".venv/Scripts/ffmpeg")):
+        if cand.is_file():
+            return str(cand)
+    return "ffmpeg"
+
+
 def _escape_filter_path(path: str) -> str:
     """Escapa un path para usarlo dentro de un filtro de ffmpeg (p. ej. subtitles=)."""
     return path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
 def _run(cmd: list[str]) -> None:
+    # Reemplazar "ffmpeg" por binario real si es fallback
+    if cmd and cmd[0] == "ffmpeg":
+        cmd = [_ffmpeg_bin()] + cmd[1:]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
@@ -120,10 +141,10 @@ def _run(cmd: list[str]) -> None:
 
 
 def _soporta_filtro(nombre: str) -> bool:
-    """True si el ffmpeg en PATH incluye el filtro ``nombre`` (p. ej. 'subtitles', 'xfade')."""
+    """True si el ffmpeg en PATH (o fallback) incluye el filtro ``nombre`` (p. ej. 'subtitles', 'xfade')."""
     import re
     try:
-        out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"],
+        out = subprocess.run([_ffmpeg_bin(), "-hide_banner", "-filters"],
                              capture_output=True, text=True).stdout
     except Exception:
         return False
@@ -453,8 +474,8 @@ def _resolver_efectos(escs: list[dict], preset_nombre: str) -> list[dict]:
 
 def ensamblar(guion: dict, imagedir: Path, audio: Path, srt: Path, outdir: Path,
               formato: str, salida: str, preset_nombre: str = "suave") -> Path:
-    if shutil.which("ffmpeg") is None:
-        raise RuntimeError("No se encontró 'ffmpeg' en el PATH. Instálalo para ensamblar el video.")
+    if shutil.which("ffmpeg") is None and not Path(_ffmpeg_bin()).is_file():
+        raise RuntimeError("No se encontró 'ffmpeg' en el PATH ni en imageio-ffmpeg. Instálalo (brew install ffmpeg) o pip install imageio-ffmpeg y ejecuta bash setup.sh.")
     if preset_nombre not in PRESETS:
         raise RuntimeError(f"Preset desconocido '{preset_nombre}'. "
                            f"Opciones: {', '.join(PRESETS)} (o --list-efectos).")

@@ -60,6 +60,7 @@ Pregunta lo mínimo necesario (no hagas un interrogatorio). Determina:
   anota sus **rutas** (una o varias; pueden estar fuera del proyecto, p. ej. en `~/Desktop/...`).
   Guárdalas en `parametros.imagen_referencia` como **lista** de rutas (o un string) para fijar el
   estilo de forma consistente.
+  **CRÍTICO — referencia con personaje:** si la(s) referencia(s) muestra(n) un personaje (ej. Tom, el gato gris y blanco de Tom y Jerry), **debes inferir y describir exactamente a ese personaje** para la ficha `CHARACTER:`. No inventes otro (ej. Alex humano) porque el prompt de texto entrará en conflicto con la imagen de referencia y el modelo la ignorará. Si no estás seguro del personaje, pide al usuario que lo describa en una frase y úsala literal para la ficha. La Fase 2 reforzará automáticamente cada prompt con “Replicate the exact character from the reference image(s)”, pero la ficha debe coincidir para que funcione.
 
 ### 2. Generar o refinar la idea
 
@@ -137,6 +138,7 @@ Reglas de redacción:
   y guarda su ruta en `parametros.imagen_referencia`. Si la ruta es relativa, escríbela relativa a
   la raíz del proyecto. Las referencias se envían como imágenes reales al modelo generador
   (anclaje visual directo), no como descripciones textuales.
+  **Si la referencia contiene un personaje (ej. Tom), la ficha `CHARACTER:` debe describir a ESE personaje** (ej. `CHARACTER: Tom, a gray and white anthropomorphic cat with large green eyes, pink nose, white muzzle and belly, thin tail, expressive cartoon style.`). No uses un humano genérico si la referencia es un animal/antropomórfico. El script `generar_imagenes.py` añade automáticamente “Replicate the exact character from the reference” a cada prompt cuando hay referencias, pero solo funciona si la ficha coincide.
 
 ### 5. Mostrar y pedir confirmación explícita
 

@@ -34,8 +34,32 @@ def _mod_ok(nombre_import: str) -> bool:
     return importlib.util.find_spec(nombre_import) is not None
 
 
+def _ffmpeg_fallback_path() -> str | None:
+    """Ruta de ffmpeg provista por imageio-ffmpeg (pip), si está instalada."""
+    try:
+        import imageio_ffmpeg
+        p = imageio_ffmpeg.get_ffmpeg_exe()
+        if p and __import__("pathlib").Path(p).is_file():
+            return p
+    except Exception:
+        pass
+    # symlink local .venv/bin/ffmpeg o .venv/Scripts/ffmpeg.exe (creado por setup.sh/.bat)
+    for cand in (__import__("pathlib").Path(".venv/bin/ffmpeg"),
+                 __import__("pathlib").Path(".venv/bin/ffmpeg.exe"),
+                 __import__("pathlib").Path(".venv/Scripts/ffmpeg.exe"),
+                 __import__("pathlib").Path(".venv/Scripts/ffmpeg")):
+        if cand.is_file():
+            return str(cand)
+    return None
+
+
 def _bin_ok(bin_: str) -> bool:
-    return shutil.which(bin_) is not None
+    if shutil.which(bin_) is not None:
+        return True
+    # fallback para ffmpeg/ffprobe vía imageio-ffmpeg
+    if bin_ in ("ffmpeg", "ffprobe"):
+        return _ffmpeg_fallback_path() is not None
+    return False
 
 
 def _check_mcp(servidor: str) -> bool:
@@ -49,11 +73,20 @@ def _check_mcp(servidor: str) -> bool:
     return False
 
 
+def _ffmpeg_bin() -> str:
+    """Binario ffmpeg a usar: PATH o fallback imageio-ffmpeg."""
+    p = shutil.which("ffmpeg")
+    if p:
+        return p
+    fb = _ffmpeg_fallback_path()
+    return fb or "ffmpeg"
+
+
 def _ffmpeg_tiene_libass() -> bool:
-    """True si el ffmpeg en PATH soporta el filtro 'subtitles'/'ass' (libass)."""
+    """True si el ffmpeg en PATH (o fallback) soporta el filtro 'subtitles'/'ass' (libass)."""
     import re, subprocess
     try:
-        out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True, timeout=10).stdout
+        out = subprocess.run([_ffmpeg_bin(), "-hide_banner", "-filters"], capture_output=True, text=True, timeout=10).stdout
         return bool(re.search(r"(?<![-\w])subtitles(?![-\w])", out) or re.search(r"(?<![-\w])ass(?![-\w])", out))
     except Exception:
         return False

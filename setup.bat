@@ -36,12 +36,34 @@ if not exist .env (
     echo     .env ya existe; no se sobreescribe.
 )
 
-echo ==^> Verificando FFmpeg ...
+echo ==^> Configurando FFmpeg (imageio-ffmpeg fallback) ...
 where ffmpeg >nul 2>nul
 if errorlevel 1 (
-    echo     AVISO: ffmpeg NO esta en el PATH. Es necesario para ensamblar el video.
-    echo     En Windows:  winget install ffmpeg     (o choco install ffmpeg)
-    echo     Cierra y reabre la terminal despues de instalarlo.
+    echo     ffmpeg no encontrado en PATH; intentando vincular desde imageio-ffmpeg...
+    .venv\Scripts\python.exe -c "import imageio_ffmpeg, pathlib, shutil; p=imageio_ffmpeg.get_ffmpeg_exe(); print(p)" > "%TEMP%\ffmpeg_path.txt" 2>nul
+    if exist "%TEMP%\ffmpeg_path.txt" (
+        for /f "usebackq delims=" %%p in ("%TEMP%\ffmpeg_path.txt") do (
+            if exist "%%p" (
+                copy /y "%%p" ".venv\Scripts\ffmpeg.exe" >nul 2>nul
+                copy /y "%%p" ".venv\Scripts\ffprobe.exe" >nul 2>nul
+                echo     ffmpeg vinculado desde imageio-ffmpeg a .venv\Scripts\ffmpeg.exe
+            )
+        )
+    )
+    where ffmpeg >nul 2>nul
+    if errorlevel 1 (
+        if not exist ".venv\Scripts\ffmpeg.exe" (
+            echo     AVISO: ffmpeg NO esta en el PATH ni en imageio-ffmpeg.
+            echo     En Windows:  winget install ffmpeg     (o choco install ffmpeg)
+            echo     Cierra y reabre la terminal despues de instalarlo.
+        ) else (
+            echo     ffmpeg OK (via .venv\Scripts\ffmpeg.exe con libass)
+        )
+    ) else (
+        echo     ffmpeg OK
+    )
+) else (
+    echo     ffmpeg OK
 )
 
 echo ==^> Chequeo del entorno ...

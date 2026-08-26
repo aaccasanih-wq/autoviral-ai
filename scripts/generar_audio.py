@@ -52,6 +52,36 @@ RATE_DEF = "+0%"
 PITCH_DEF = {"edge": "+0Hz", "gcp": "0"}
 
 
+def _ffmpeg_bin() -> str | None:
+    """Binario ffmpeg: PATH o fallback imageio-ffmpeg."""
+    p = shutil.which("ffmpeg")
+    if p:
+        return p
+    try:
+        import imageio_ffmpeg
+        pp = imageio_ffmpeg.get_ffmpeg_exe()
+        if pp and Path(pp).is_file():
+            return pp
+    except Exception:
+        pass
+    for cand in (Path(".venv/bin/ffmpeg"), Path(".venv/Scripts/ffmpeg.exe"), Path(".venv/Scripts/ffmpeg")):
+        if cand.is_file():
+            return str(cand)
+    return None
+
+
+def _ffprobe_bin() -> str | None:
+    """Binario ffprobe: PATH o fallback (ffprobe suele ser el mismo binario ffmpeg en imageio-ffmpeg)."""
+    p = shutil.which("ffprobe")
+    if p:
+        return p
+    for cand in (Path(".venv/bin/ffprobe"), Path(".venv/Scripts/ffprobe.exe"), Path(".venv/Scripts/ffprobe")):
+        if cand.is_file():
+            return str(cand)
+    # último intento: usar ffmpeg -i como probe (no ideal, pero evita mutagen fallback)
+    return _ffmpeg_bin()
+
+
 def _leer_duracion(path: Path) -> float:
     """Devuelve la duración (segundos) de un MP3 usando mutagen; fallback por ffprobe."""
     try:
@@ -61,7 +91,7 @@ def _leer_duracion(path: Path) -> float:
         info = MP3(str(path)).info
         return float(info.length)
     except Exception:
-        ffprobe = shutil.which("ffprobe")
+        ffprobe = _ffprobe_bin()
         if ffprobe:
             out = subprocess.run(
                 [ffprobe, "-v", "error", "-show_entries", "format=duration",
@@ -145,7 +175,7 @@ def _sintetizar_gcp(texto: str, voz: str, rate: str, pitch: str, apikey: str, ou
 
 def _concatenar_audio(entradas: list[Path], salida: Path) -> bool:
     """Concatena mp3 en orden. Devuelve False si no se pudo (sin ffmpeg)."""
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = _ffmpeg_bin()
     if not ffmpeg:
         return False
     tmp = salida.with_suffix(".txt")
