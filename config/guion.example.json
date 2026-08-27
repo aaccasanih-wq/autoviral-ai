@@ -11,7 +11,7 @@
     "publico": "adultos 25-40, usuarios de redes sociales",
     "imagen_referencia": [],
     "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"},
-    "subtitulos": {"enabled": true, "color": "amarillo", "font": "Arial Black", "fontSize": 64, "outline": 5, "hook": null, "hookColor": "rojo", "hookDuration": 3.0}
+    "subtitulos": {"enabled": true, "color": "amarillo", "font": "Arial Black", "fontSize": 72, "hookFontSize": 80, "outline": 5, "hook": null, "hookColor": "rojo", "hookDuration": 3.0}
   },
   "escenas": [
     {

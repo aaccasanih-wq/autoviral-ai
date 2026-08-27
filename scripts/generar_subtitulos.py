@@ -26,7 +26,8 @@ Parámetro en guion.json (opcional, Fase 1 puede fijarlo):
         \"enabled\": true,               // false = no generar ni quemar
         \"color\": \"amarillo\",           // amarillo | blanco | verde | rojo | #RRGGBB
         \"font\": \"Arial Black\",         // familia (debe existir en el sistema)
-        \"fontSize\": 64,                  // pt para 1080x1920
+        \"fontSize\": 72,                  // pt para 1080x1920 (WWord inferior, default aumentado de 64→72)
+        \"hookFontSize\": 80,              // pt para TopHook superior (default 80, antes 72 fijo)
         \"outline\": 5,                    // grosor borde negro
         \"hook\": \"WHO REALLY RUNS...\",  // texto superior; null = auto de la narración; \"\" = desactivar
         \"hookColor\": \"rojo\",            // rojo | blanco | amarillo
@@ -116,9 +117,16 @@ def _resolver_config(args, guion) -> dict:
     # font / sizes
     font = (args.font or params.get("font") or "Arial Black").strip()
     try:
-        fontSize = int(args.font_size or params.get("fontSize") or 64)
+        fontSize = int(args.font_size or params.get("fontSize") or 72)
     except Exception:
-        fontSize = 64
+        fontSize = 72
+    try:
+        hookFontSize = int(getattr(args, "hook_font_size", None) or params.get("hookFontSize") or params.get("hook_font_size") or (fontSize + 8))
+    except Exception:
+        hookFontSize = fontSize + 8
+    # clamp a rango razonable para 1080p vertical
+    fontSize = max(40, min(110, fontSize))
+    hookFontSize = max(40, min(120, hookFontSize))
     try:
         outline = int(args.outline or params.get("outline") or 5)
     except Exception:
@@ -141,6 +149,7 @@ def _resolver_config(args, guion) -> dict:
         "hookColor": hook_color,
         "font": font,
         "fontSize": fontSize,
+        "hookFontSize": hookFontSize,
         "outline": outline,
         "hook": hook_text,
         "hookDuration": max(0.0, min(5.0, hook_dur)),
@@ -182,7 +191,7 @@ YCbCr Matrix: TV.601
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: WWord,__FONT__,__FONTSIZE__,__PRIMARY__,__BACK__,__OUTLINE__,__BACK2__,-1,0,0,0,100,100,0,0,1,__OUTLINE_W__,2,2,10,10,280,1
-Style: TopHook,__FONT__,72,__HOOK_PRIMARY__,__BACK__,__HOOK_OUTLINE__,__BACK2__,-1,0,0,0,100,100,0,0,1,6,3,8,10,10,140,1
+Style: TopHook,__FONT__,__HOOK_FONTSIZE__,__HOOK_PRIMARY__,__BACK__,__HOOK_OUTLINE__,__BACK2__,-1,0,0,0,100,100,0,0,1,6,3,8,10,10,140,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -235,7 +244,8 @@ def generar_ass(palabras: list[dict], frases: list[dict], guion: dict, cfg: dict
 
     # Reemplazo en orden largo->corto para evitar colisión de substrings (ej. OUTLINE dentro de HOOK_OUTLINE)
     ass = ASS_HEADER_TEMPLATE.replace("__FONT__", font) \
-        .replace("__FONTSIZE__", str(cfg.get("fontSize", 55))) \
+        .replace("__FONTSIZE__", str(cfg.get("fontSize", 72))) \
+        .replace("__HOOK_FONTSIZE__", str(cfg.get("hookFontSize", 80))) \
         .replace("__HOOK_PRIMARY__", hook_primary) \
         .replace("__HOOK_OUTLINE__", hook_outline) \
         .replace("__PRIMARY__", primary) \
@@ -292,7 +302,8 @@ def main(argv=None) -> int:
     ap.add_argument("--hook-color", dest="hook_color", default=None, help="Color hook: rojo, blanco, etc.")
     ap.add_argument("--hook-duration", dest="hook_duration", type=float, default=None, help="Duración hook superior en seg (default 3.0)")
     ap.add_argument("--font", default=None, help="Familia tipográfica (default Arial Black)")
-    ap.add_argument("--font-size", dest="font_size", type=int, default=None, help="Tamaño fuente inferior (default 64)")
+    ap.add_argument("--font-size", dest="font_size", type=int, default=None, help="Tamaño fuente inferior (default 72, antes 64)")
+    ap.add_argument("--hook-font-size", dest="hook_font_size", type=int, default=None, help="Tamaño fuente hook superior (default 80, antes 72 fijo; si no se pasa = fontSize+8)")
     ap.add_argument("--outline", type=int, default=None, help="Grosor borde (default 5)")
     args = ap.parse_args(argv)
 

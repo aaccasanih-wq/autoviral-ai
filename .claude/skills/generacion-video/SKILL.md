@@ -164,7 +164,7 @@ Genera `narracion.ass` con:
   visible `hookDuration` segundos (default 3s). Texto = `parametros.subtitulos.hook` o,
   si es `null`, copia la primera frase de la narración (hook llamativo automático).
 
-Configurable vía `guion.json`:
+Configurable vía `guion.json` (defaults aumentados en v1.2: 64→72 / 72→80 para mejor legibilidad vertical):
 
 ```json
 "parametros": {
@@ -172,7 +172,8 @@ Configurable vía `guion.json`:
     "enabled": true,
     "color": "amarillo",
     "font": "Arial Black",
-    "fontSize": 64,
+    "fontSize": 72,
+    "hookFontSize": 80,
     "outline": 5,
     "hook": "WHO REALLY RUNS THE WORLD?",
     "hookColor": "rojo",
@@ -180,6 +181,8 @@ Configurable vía `guion.json`:
   }
 }
 ```
+
+Ajustes rápidos: `--font-size 72 --hook-font-size 80 --color amarillo --hook-color rojo` o edita `fontSize`/`hookFontSize` en el guion y regenera con `generar_subtitulos.py` + re-ensambla.
 
 Prioridad: flags CLI > `parametros.subtitulos` > default. El usuario puede pedir
 "cambia a blanco", "haz el hook más corto", o adjuntar una captura como modelo y tú traduces
