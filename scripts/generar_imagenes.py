@@ -46,11 +46,13 @@ from pathlib import Path
 
 try:
     from guion import (cargar_guion, cargar_prompts_txt, directorio_sesion, escenas,
-                       exportar_prompts_txt, guardar_json, imagenes_referencia, nombre_imagen)
+                       exportar_prompts_txt, guardar_json, imagenes_referencia,
+                       incluye_protagonista, nombre_imagen)
 except ImportError:  # pragma: no cover - permit run from anywhere via PYTHONPATH
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from guion import (cargar_guion, cargar_prompts_txt, directorio_sesion, escenas,  # type: ignore
-                       exportar_prompts_txt, guardar_json, imagenes_referencia, nombre_imagen)
+                       exportar_prompts_txt, guardar_json, imagenes_referencia,
+                       incluye_protagonista, nombre_imagen)  # type: ignore
 
 from envutil import (apikey_proveedor, cargar_env, imagen_seed, model_imagen_por_defecto,
                      proveedor_imagen_por_defecto, qwen_generacion_url, qwen_modelo_por_defecto,
@@ -386,7 +388,8 @@ def main(argv: list[str] | None = None) -> int:
                          "cálidos, estilo anime, fondos urbanos'). Se añade a todos los prompts.")
     ap.add_argument("--estilo-id", default=None,
                     help="ID del catálogo estilos/<id> (ej. tom-jerry, palitos-doodle). "
-                         "Carga character_ficha/style_ficha/anti_drift y referencias del estilo. "
+                         "Carga STYLE + anti_drift_estilo siempre y CHARACTER + "
+                         "anti_drift_personaje solo si la escena trae incluye_protagonista=true. "
                          "También se lee de guion.parametros.estilo_id si no se pasa por CLI.")
     ap.add_argument("--referencia", action="append", default=None,
                     help="Ruta a una imagen de referencia (.png/.jpg/...) cuyo estilo se usará de "
@@ -538,26 +541,52 @@ def main(argv: list[str] | None = None) -> int:
             ok += 1
             continue
         # Prompt final: el editado por el usuario (prompts.txt) si existe; si no, el del guion.
+        # Los prompts de Fase 1 ya vienen listos para copiar/pegar (frase EN de referencia +
+        # CHARACTER solo si incluye_protagonista=true). Aquí solo se refuerza lo que falte.
         base_prompt = prompts_editados.get(esc["id"]) or esc["prompt_imagen"]
-        # Anti-drift: si hay estilo del catálogo y el prompt no trae las fichas, inyectarlas.
-        # Esto fija protagonista (ropa/color exactos, sin zapatos/gorra) en CADA llamada.
+        _flag = incluye_protagonista(esc)
+        con_prota = (_flag if _flag is not None else ("CHARACTER:" in base_prompt))
+        # Anti-drift dividido: STYLE siempre; CHARACTER solo cuando el protagonista aparece.
         if estilo_data:
             cf = estilo_data.get("character_ficha", "")
             sf = estilo_data.get("style_ficha", "")
-            ad = estilo_data.get("anti_drift", "")
-            if cf and "CHARACTER:" not in base_prompt:
-                base_prompt = f"{cf} {base_prompt}"
-            if sf and "STYLE:" not in base_prompt:
-                base_prompt = f"{base_prompt} {sf}"
-            if ad and ad[:30] not in base_prompt:
-                base_prompt = f"{base_prompt} {ad}"
+            ad_e = estilo_data.get("anti_drift_estilo") or estilo_data.get("anti_drift", "")
+            ad_p = estilo_data.get("anti_drift_personaje", "")
+            fr_con = estilo_data.get("frase_referencia_con", "")
+            fr_sin = estilo_data.get("frase_referencia_sin", "")
+            if "attached reference image" not in base_prompt:
+                base_prompt = f"{(fr_con if con_prota else fr_sin) + ' ' if (fr_con if con_prota else fr_sin) else ''}{base_prompt}"
+            if con_prota:
+                if cf and "CHARACTER:" not in base_prompt:
+                    base_prompt = f"{cf} {base_prompt}"
+                if sf and "STYLE:" not in base_prompt:
+                    base_prompt = f"{base_prompt} {sf}"
+                for ad in (ad_p, ad_e):
+                    if ad and ad[:30] not in base_prompt:
+                        base_prompt = f"{base_prompt} {ad}"
+            else:
+                if _flag is False and "CHARACTER:" in base_prompt:
+                    print(f"[imagenes] AVISO {esc['id']}: incluye_protagonista=false pero el prompt "
+                          f"menciona CHARACTER (guion viejo). Se respeta el texto; revisa el guion.",
+                          file=sys.stderr)
+                if sf and "STYLE:" not in base_prompt:
+                    base_prompt = f"{base_prompt} {sf}"
+                if ad_e and ad_e[:30] not in base_prompt:
+                    base_prompt = f"{base_prompt} {ad_e}"
         prompt = f"{base_prompt}. Aspect ratio {ratio}. High quality, crisp details."
-        # Si hay referencias, instruir explícitamente al modelo para que replique personaje y estilo.
-        # Sin esto, el modelo puede ignorar la(s) imagen(es) de referencia cuando el texto describe otro personaje (ej. Alex humano vs Tom gato).
+        # Referencias: con protagonista replica personaje+estilo; sin él, solo estilo/fondo.
+        # (Sin esto, el modelo puede ignorar la(s) imagen(es) o añadir una mascota no pedida.)
         if referencias:
-            prompt += " Replicate the exact character and art style from the reference image(s). Keep the main character identical in appearance to the reference across all scenes."
-            if estilo_data and estilo_data.get("anti_drift"):
-                prompt += f" {estilo_data['anti_drift']}"
+            if con_prota:
+                prompt += " Replicate the exact character and art style from the reference image(s). Keep the main character identical in appearance to the reference across all scenes."
+            else:
+                prompt += " Match the art style and background from the reference image(s). Do not add any mascot or character unless named in the prompt."
+            _ad_extra = (estilo_data.get("anti_drift_personaje", "") + " " +
+                         estilo_data.get("anti_drift_estilo", "")).strip() if estilo_data else ""
+            if not _ad_extra and estilo_data:
+                _ad_extra = estilo_data.get("anti_drift", "")
+            if _ad_extra and _ad_extra[:30] not in prompt:
+                prompt += f" {_ad_extra}"
         if args.estilo:
             prompt += f"\nAjuste solicitado por el usuario: {args.estilo}"
         throttle.esperar()  # respetar el RPM antes de cada petición

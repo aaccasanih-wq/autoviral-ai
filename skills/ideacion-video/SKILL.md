@@ -132,19 +132,25 @@ Reglas de redacción:
 - La narración debe sumar ~cuando se lee en voz alta al ritmo de la duración total. Si una escena
   dura 8 s, su narración debe ser de ~1–2 líneas habladas.
 - Los `prompt_imagen` deben ser **autónomos** (sin referencias cruzadas ni pronombres ambiguos).
-- **Consistencia de personaje y estilo (OBLIGATORIO si hay personaje recurrente):** si hay
-  `estilo_id`, copia sus `character_ficha` + `style_ficha` + `anti_drift` de
-  `estilos/<id>/estilo.json` y repítelas **literalmente (verbatim, mismas palabras) al inicio/final
-  de cada `prompt_imagen`** (`{CHARACTER} {STYLE} {acción}. {anti_drift}`). Los modelos no recuerdan
-  escenas — la única forma de mantener al protagonista idéntico es descripción idéntica + outfit
-  único fijo (ej. palitos siempre polo amarillo `#FFD93D`, Tom siempre jersey oliva + khaki).
-  Si es ad-hoc (sin estilo), define tú las fichas con el mismo formato. Ejemplo:
+- **Protagonista solo cuando la historia lo pide (OBLIGATORIO):** el estilo guarda look +
+  personaje, pero “principal” NO significa “siempre visible”. Por escena decide según el guion
+  (hook/CTA y acciones del personaje suelen `true`; datos, charts y objetos suelen `false`) y
+  escribe el flag explícito `incluye_protagonista: true/false` en cada escena.
+  - Si `true` (con protagonista): `prompt_imagen` = `{frase_referencia_con} {CHARACTER} {STYLE}
+    {acción-con-protagonista}. {anti_drift_personaje} {anti_drift_estilo}` con fichas copiadas
+    **verbatim** de `estilos/<id>/estilo.json`. Cuando aparece, la descripción idéntica + outfit
+    único fijo es lo que evita el drift (ej. palitos siempre polo amarillo `#FFD93D`).
+  - Si `false` (sin protagonista): `prompt_imagen` = `{frase_referencia_sin} {STYLE}
+    {acción-objeto/entorno}. {anti_drift_estilo}` — SIN `CHARACTER` ni `anti_drift_personaje`.
+  - La frase EN inicial (`Using the attached reference image(s) as...`) es obligatoria: en la web
+    el usuario la adjunta a mano; por API se envía sola. Así `prompts.txt` sale listo para copiar/pegar.
+  - Si es ad-hoc (sin estilo), define tú `STYLE` + `CHARACTER` con el mismo formato. Ejemplo:
   `CHARACTER: Martin, a Spanish man in his early 30s, short messy brown hair, thick eyebrows,
   light stubble, worn gray bomber jacket over a white t-shirt, blue jeans.`
   Ejemplo de estilo:
   `STYLE: flat 2D cartoon illustration, clean bold outlines, muted earthy color palette, soft
   lighting, vertical 9:16 composition.`
-  Tras la ficha, añade SOLO la acción/escena concreta. Cambia SOLO la parte de acción entre escenas.
+  Cambia SOLO la parte de acción entre escenas.
 - Los timestamps deben ser **contiguos**: el `inicio` de una escena = el `fin` de la anterior.
 - La primera escena debe `inicio_segundos = 0`.
 - Si hay imagen de referencia, guárdala dentro del proyecto (p. ej. `workspace/referencia.png`)
@@ -197,9 +203,10 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
       "id": "escena-01",
       "inicio_segundos": 0,
       "fin_segundos": 6,
-      "narracion": "¿Sabías que puedes ahorrar horas con un solo truco?",
-      "prompt_imagen": "Overhead shot of a minimal desk with a glowing laptop, soft window light, cinematic 35mm, shallow depth of field",
-      "notas": "Gancho: cara a cámara o close-up de manos",
+      "incluye_protagonista": true,
+      "narracion": "¿Sabías que puedes ahorrar horas con un solo cambio?",
+      "prompt_imagen": "Using the attached reference image(s) as the style and character reference, generate a new image in the same art style with the same protagonist. CHARACTER: (...) STYLE: (...) Protagonist typing on a glowing laptop. (...)",
+      "notas": "Gancho con protagonista",
       "efectos": {"movimiento": "zoom_in", "intensidad": 1.12, "transicion": "fade", "transicion_duracion": 0.4, "grade": "none"}
     }
   ]
@@ -213,8 +220,9 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
 
 1. ¿Hay al menos 1 escena y la primera `inicio_segundos = 0`?
 2. ¿Los timestamps son contiguos y la última escena termina en `duracion_segundos`?
-3. ¿Cada escena tiene `narracion` y `prompt_imagen` no vacíos?
-4. ¿Se confirmaron `formato`, `idioma`, `duracion_segundos`, `estilo_id`/`estilo_visual`, `publico` y motor TTS (`gcp` default, `edge` solo si se pide)?
-5. ¿El usuario confirmó explícitamente el guion y el estilo + voz?
+3. ¿Cada escena tiene `narracion`, `prompt_imagen` e `incluye_protagonista` (true/false) explícito?
+4. ¿Los prompts con protagonista llevan `CHARACTER` + `anti_drift_personaje`, y los sin protagonista NO llevan `CHARACTER` (solo `STYLE` + `anti_drift_estilo`)?
+5. ¿Se confirmaron `formato`, `idioma`, `duracion_segundos`, `estilo_id`/`estilo_visual`, `publico` y motor TTS (`gcp` default, `edge` solo si se pide)?
+6. ¿El usuario confirmó explícitamente el guion y el estilo + voz?
 
 Si todo cumple, la Fase 1 termina. Si no, refínalo antes de cerrar.

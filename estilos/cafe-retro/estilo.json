@@ -1,0 +1,25 @@
+{
+  "id": "cafe-retro",
+  "nombre": "Café Retro 50s",
+  "descripcion": "Mascota taza de café rubber-hose 50s, fondo crema, noticiero vintage",
+  "character_ficha": "CHARACTER: Retro Cup, a vintage 1950s rubber-hose cartoon coffee mug mascot with cream-white ceramic body (#FFF8ED), thick black outlines, black coffee top surface, single thin steam swirl on top, large oval white eyes with black pupils looking forward, small open oval mouth, subtle halftone dot shading on the mug sides, C-shaped handle on the right side, thin black stick arms with white cartoon gloves, thin black stick legs with oversized white shoes with black outlines, cheerful 1930s-1950s rubber-hose proportions, ALWAYS the same diner mug shape, ALWAYS white gloves and white shoes, NO hat, NO glasses, NO extra clothes, NO color change",
+  "style_ficha": "STYLE: vintage 1950s rubber-hose cartoon illustration, thick black outlines, flat cream and black colors with halftone dot shading, no gradients, no photorealism, no 3D, no anime, solid warm light cream-gray background (#E8E3D5), bold black arched cartoon text on top, dynamic running pose with small motion lines and soft drop shadow under feet, vertical 9:16 composition",
+  "fondo": "#E8E3D5 crema-gris cálido sólido, sin degradados ni texturas",
+  "paleta": ["#E8E3D5 fondo", "#FFF8ED cerámica", "#000000 tinta y café", "#FFFFFF guantes y zapatos"],
+  "trazo": "thick black outlines rubber-hose, grosor grueso uniforme, manos y pies exagerados",
+  "anti_drift": "DEPRECATED (v1, solo compat): Keep the SAME Retro Cup mug protagonist identical in EVERY scene. Usar anti_drift_estilo + anti_drift_personaje.",
+  "anti_drift_estilo": "Keep the same art style and background in every image: vintage 1950s rubber-hose cartoon illustration, thick black outlines, flat cream and black colors with halftone dot shading, no gradients, no photorealism, no 3D, no anime, no modern flat vector. Keep solid warm light cream-gray background (#E8E3D5) in every scene.",
+  "anti_drift_personaje": "When the Retro Cup mug protagonist appears, keep it identical: same diner mug shape with C-handle on the right, same cream-white ceramic body (#FFF8ED), same face, same white cartoon gloves and same oversized white shoes. Do NOT change it into a to-go paper cup or espresso cup, do NOT change body/face colors, do NOT add hats, glasses or clothes, do NOT remove gloves or shoes.",
+  "frase_referencia_con": "Using the attached reference image(s) as the style and character reference, generate a new image in the same art style with the same protagonist.",
+  "frase_referencia_sin": "Using the attached reference image(s) as the style and background reference only. Do not add any mascot or character unless named in the prompt.",
+  "negativos": ["photorealistic", "3D render", "anime", "cambiar taza protagonista por vaso to-go", "cambiar colores", "gorra", "gafas", "ropa extra", "fondo degradado", "sombras realistas"],
+  "personajes_secundarios": "Solo si la escena lo pide: To-Go Cup (vaso papel con tapa negra) y Espresso Cup (tacita con derrame) con looks fijos de la referencia, nunca como protagonista salvo que se declare. Humanos estilo rubber-hose simples si aparecen, nunca con protagonismo.",
+  "referencias": [
+    "estilos/cafe-retro/referencias/88be24314e53d400fb3be0f62d294895.jpg"
+  ],
+  "prompt_template": "DEPRECATED (v1): {character_ficha} {style_ficha} {accion}. {anti_drift}",
+  "prompt_template_con_personaje": "{frase_referencia_con} {character_ficha} {style_ficha} {accion}. {anti_drift_personaje} {anti_drift_estilo}",
+  "prompt_template_sin_personaje": "{frase_referencia_sin} {style_ficha} {accion}. {anti_drift_estilo}",
+  "seed_policy": "misma seed por video, prompt_extend=false",
+  "version": 2
+}

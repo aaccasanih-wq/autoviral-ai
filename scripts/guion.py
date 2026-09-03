@@ -54,6 +54,10 @@ def cargar_guion(path: str | Path) -> dict[str, Any]:
 
     escenas = data.get("escenas", [])
     _require(isinstance(escenas, list) and escenas, "Debe existir al menos una escena.")
+    for idx, esc in enumerate(escenas):
+        if isinstance(esc, dict) and "incluye_protagonista" in esc:
+            _require(isinstance(esc["incluye_protagonista"], bool),
+                      f"La escena {idx} ('{esc.get('id', idx)}'): 'incluye_protagonista' debe ser true/false.")
 
     prev_fin = 0.0
     for idx, esc in enumerate(escenas):
@@ -126,6 +130,37 @@ def estilo_id(guion: dict[str, Any]) -> str | None:
     return v.strip() if isinstance(v, str) and v.strip() else None
 
 
+def incluye_protagonista(esc: dict[str, Any]) -> bool | None:
+    """Flag explícito por escena (``incluye_protagonista``).
+
+    True = el protagonista aparece (usar su ficha exacta).
+    False = solo fondo/objetos del estilo, sin protagonista.
+    None = guion viejo sin flag (compat: se infiere por mención en el prompt).
+    """
+    v = esc.get("incluye_protagonista")
+    return v if isinstance(v, bool) else None
+
+
+def _refs_para_prompts_txt(guion: dict[str, Any]) -> list[str]:
+    """Referencias a adjuntar manualmente (para el comentario copy-paste de prompts.txt)."""
+    refs = imagenes_referencia(guion)
+    if refs:
+        return refs
+    # Fallback: referencias del estilo del catálogo (best effort, sin fallar).
+    try:
+        sid = estilo_id(guion)
+        if sid:
+            raiz = Path(__file__).resolve().parent.parent
+            cat = json.loads((raiz / "estilos" / "catalogo.json").read_text(encoding="utf-8"))
+            entry = next((e for e in cat.get("estilos", []) if e["id"] == sid), None)
+            if entry:
+                estilo = json.loads((raiz / entry["estilo_json"]).read_text(encoding="utf-8"))
+                return [str(r) for r in estilo.get("referencias", []) if r]
+    except Exception:
+        pass
+    return []
+
+
 def directorio_sesion(guion_path: str | Path) -> Path:
     """Carpeta de la sesión = carpeta donde vive ``guion.json``.
 
@@ -142,15 +177,24 @@ def exportar_prompts_txt(guion: dict[str, Any], path: str | Path) -> Path:
     en las líneas siguientes. El agente lo usa como input final de generación de imágenes y el
     usuario puede editarlo a mano.
     """
+    refs = _refs_para_prompts_txt(guion)
+    adjuntar = ", ".join(refs) if refs else "(sin referencia: estilo ad-hoc textual)"
     lines = [
-        "# Prompts de imagen para generar las imágenes. Edita y guarda este archivo; el agente lo usará.",
-        "# Formato: una línea \"### ESCENA: <id> (<inicio> - <fin>)\" y debajo el prompt (varias líneas).",
-        "# Puedes editarlos aquí a mano o pedirle al agente que los ajuste.",
+        "# Prompts listos para copiar/pegar en la web de tu generador de imágenes (Qwen u otra IA).",
+        "# Por escena: 1) adjunta manualmente la(s) imagen(es) de referencia indicadas,",
+        "# 2) copia y pega SOLO el texto del prompt (sin las líneas que empiezan con #).",
+        f"# Referencia(s) a adjuntar en cada escena: {adjuntar} (máx 3 en Qwen).",
+        "# Si el agente genera por API, estas mismas referencias se envían solas; no adjuntes nada.",
+        "# Formato: una línea \"### ESCENA: <id> (<inicio> - <fin>)\" + comentarios # y debajo el prompt.",
     ]
     for esc in guion["escenas"]:
+        flag = incluye_protagonista(esc)
+        prota = "sí" if flag is True else ("no" if flag is False else "no indicado (compat: inferido)")
         lines.append("")
         lines.append(f"### ESCENA: {esc.get('id')} "
                      f"({esc.get('inicio_segundos', 0)} - {esc.get('fin_segundos', 0)})")
+        lines.append(f"# protagonista: {prota}")
+        lines.append(f"# adjuntar: {adjuntar}")
         lines.append((esc.get("prompt_imagen") or "").strip())
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)

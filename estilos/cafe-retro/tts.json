@@ -1,0 +1,12 @@
+{
+  "motor": "gcp",
+  "voz_en": "en-US-Neural2-J",
+  "voz_es": "es-ES-Neural2-B",
+  "edge_fallback_en": "en-US-GuyNeural",
+  "edge_fallback_es": "es-ES-AlvaroNeural",
+  "rate": "-5%",
+  "pitch": "-1",
+  "estilo_narracion": "Presentador de noticiero 50s-60s pero totalmente inteligible: masculino cálido y autoritario, dicción clara moderna, cadencia formal pausada, sin caricaturizar en exceso. Ideal para el look retro de tazas de café.",
+  "expresividad": "media-alta, solemne en el hook tipo boletín, cálido en el desarrollo, sin prisa",
+  "notas": "Default gcp, ¿confirmas gcp o prefieres edge? Fallback edge con mismo rate (pitch en Hz para edge, ej. -1Hz). Si alguna voz no existe en tu proyecto GCP, usa la Neural2 masculina madura más cercana y mantén rate/pitch."
+}

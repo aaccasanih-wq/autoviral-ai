@@ -19,18 +19,20 @@
       "id": "escena-01",
       "inicio_segundos": 0,
       "fin_segundos": 6,
+      "incluye_protagonista": true,
       "narracion": "¿Sabías que puedes recuperar una hora cada día con un solo cambio?",
-      "prompt_imagen": "Close-up of hands typing on a glowing laptop on a minimal wooden desk, soft morning window light, cinematic 35mm, shallow depth of field",
-      "notas": "Gancho inicial; mirada o manos en acción.",
+      "prompt_imagen": "Using the attached reference image(s) as the style and character reference, generate a new image in the same art style with the same protagonist. CHARACTER: Protagonist Stick (...) STYLE: flat 2D doodle (...) Close-up of hands typing on a glowing laptop on a minimal wooden desk. Keep background identical.",
+      "notas": "Gancho inicial; con protagonista (ejemplo incluye_protagonista=true).",
       "efectos": { "movimiento": "zoom_in", "intensidad": 1.12, "transicion": "fade", "transicion_duracion": 0.4, "grade": "none" }
     },
     {
       "id": "escena-02",
       "inicio_segundos": 6,
       "fin_segundos": 14,
+      "incluye_protagonista": false,
       "narracion": "El truco está en bloquear tu agenda los primeros noventa minutos del día.",
-      "prompt_imagen": "Overhead flat-lay of a notebook with a blocked 90-minute schedule, coffee cup and phone face down, clean minimal style, soft natural light",
-      "notas": "Mostrar la agenda bloqueada."
+      "prompt_imagen": "Using the attached reference image(s) as the style and background reference only. Do not add any mascot or character unless named in the prompt. STYLE: flat 2D doodle (...) Overhead flat-lay of a notebook with a blocked 90-minute schedule, coffee cup and phone face down. Keep background identical.",
+      "notas": "Mostrar la agenda bloqueada. Sin protagonista (ejemplo incluye_protagonista=false)."
     },
     {
       "id": "escena-03",

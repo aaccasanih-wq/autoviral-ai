@@ -7,11 +7,17 @@
   "fondo": "#BFE0EC sólido, sin degradados ni texturas",
   "paleta": ["#BFE0EC fondo", "#8A9BA8 gris Tom", "#FFFFFF blanco", "#6B8E5A jersey oliva", "#C2B280 khaki", "#8B5A2B marrón Jerry", "#000000 tuxedo"],
   "trazo": "clean bold black outlines, grosor uniforme, sin sketch",
-  "anti_drift": "Keep the SAME two characters identical in EVERY scene: Tom with olive green turtleneck and khaki pants, Jerry with black tuxedo. Do NOT change their clothes, colors, fur, eyes or proportions. Do NOT add shoes, hats, glasses or new outfits. Do NOT switch to photorealistic or 3D. Keep solid #BFE0EC background in every scene. If a secondary human appears (e.g. bank teller), draw as simple cartoon human with white shirt and tie, never as protagonist.",
+  "anti_drift": "DEPRECATED (v1, solo compat): Keep the SAME two characters identical in EVERY scene. Usar anti_drift_estilo + anti_drift_personaje.",
+  "anti_drift_estilo": "Keep the same art style and background in every image: vintage Tom and Jerry 2D cartoon illustration, flat colors, clean bold black outlines, minimal shading, no gradients, no photorealism, no 3D. Keep solid pale light blue background (#BFE0EC) in every scene.",
+  "anti_drift_personaje": "When Tom and Jerry appear, keep them identical: Tom with olive green turtleneck (#6B8E5A) and khaki pants (#C2B280), Jerry with black tuxedo. Do NOT change their clothes, colors, fur, eyes or proportions. Do NOT add shoes, hats, glasses or new outfits. Secondary humans (e.g. bank teller) as simple cartoon humans with white shirt and tie, never as protagonists.",
+  "frase_referencia_con": "Using the attached reference image(s) as the style and character reference, generate a new image in the same art style with the same protagonists.",
+  "frase_referencia_sin": "Using the attached reference image(s) as the style and background reference only. Do not add any mascot or character unless named in the prompt.",
   "negativos": ["photorealistic", "3D render", "cambiar ropa", "zapatos", "gorra", "gafas", "fondo degradado", "sombras realistas"],
   "personajes_secundarios": "Solo Tom y Jerry como protagonistas. Humanos secundarios (cajero, gerente) siempre simples: piel clara, camisa blanca, corbata, sin protagonismo, nunca con ropa de Tom/Jerry.",
   "referencias": ["estilos/tom-jerry/referencias/referencia-01.png", "estilos/tom-jerry/referencias/referencia-03.png", "estilos/tom-jerry/referencias/referencia-04.png"],
-  "prompt_template": "{character_ficha} {style_ficha} {accion}. {anti_drift}",
-  "seed_policy": "misma seed por video (auto-derivada del título), prompt_extend=false",
-  "version": 1
+  "prompt_template": "DEPRECATED (v1): {character_ficha} {style_ficha} {accion}. {anti_drift}",
+  "prompt_template_con_personaje": "{frase_referencia_con} {character_ficha} {style_ficha} {accion}. {anti_drift_personaje} {anti_drift_estilo}",
+  "prompt_template_sin_personaje": "{frase_referencia_sin} {style_ficha} {accion}. {anti_drift_estilo}",
+  "seed_policy": "misma seed por video, prompt_extend=false",
+  "version": 2
 }

@@ -18,13 +18,16 @@ los consume después vía `estilo_id`.
 El problema típico de Qwen es que cambia el polo, añade zapatillas/gorra o cambia colores
 entre escenas. Lo evitas así:
 
-1. **Protagonista con outfit ÚNICO y fijo**: una sola combinación ropa+colores hex (ej. palitos
-   siempre polo amarillo `#FFD93D`, sin zapatos/gorra/gafas). Escríbelo en `character_ficha`
-   con `ALWAYS wearing` + `NO shoes, NO hat, NO glasses` + hex.
+1. **Protagonista con outfit ÚNICO y fijo** (biblioteca, NO presencia obligatoria): una sola
+   combinación ropa+colores hex (ej. palitos siempre polo amarillo `#FFD93D`, sin zapatos/gorra/gafas).
+   Escríbelo en `character_ficha` con `ALWAYS wearing` + `NO shoes, NO hat, NO glasses` + hex.
+   El protagonista aparece SOLO cuando `incluye_protagonista=true`; “principal” no es “siempre visible”.
 2. **Secundarios nunca con el color del protagonista**: declara su color fijo por escena.
-3. **Fichas verbatim en CADA prompt**: `character_ficha` + `style_ficha` al inicio + `anti_drift`
-   al final. La Fase 1 y `generar_imagenes.py --estilo-id` lo hacen automático.
+3. **Fichas condicionales**: `style_ficha` + `anti_drift_estilo` + frase EN de referencia SIEMPRE;
+   `character_ficha` + `anti_drift_personaje` SOLO en escenas con protagonista. La Fase 1 y
+   `generar_imagenes.py --estilo-id` lo aplican automático (ver los 2 `prompt_template_*`).
 4. **Misma seed por video + `prompt_extend=false` + referencia(s) en cada llamada** (máx 3 en Qwen).
+   En web el usuario adjunta la referencia a mano (la frase EN inicial lo exige); por API se envía sola.
 5. **Fondo idéntico siempre** (ej. `#FFFFFF` blanco puro o `#BFE0EC` azul Tom-Jerry, sin degradados).
 
 ## Entradas que puedes recibir
@@ -54,9 +57,10 @@ ESE personaje, no un humano genérico. Si dudas, pide 1 frase al usuario y úsal
 
 ### 2. Proponer fichas + voz
 Muestra al usuario:
-- `character_ficha` (1 párrafo EN, con ALWAYS + NO + hex)
-- `style_ficha` (1 párrafo EN, con fondo hex + no photorealism/3D + 9:16)
-- `anti_drift` (2-3 frases EN que fijan ropa/fondo y prohíben cambios)
+- `character_ficha` (1 párrafo EN, con ALWAYS + NO + hex; biblioteca para cuando aparece)
+- `style_ficha` (1 párrafo EN, con fondo hex + no photorealism/3D + 9:16; siempre)
+- `anti_drift_estilo` (fondo/paleta/trazo, siempre) + `anti_drift_personaje` (ropa/colores, solo con protagonista)
+- Frases EN de referencia (con protagonista / sin protagonista, primera línea del prompt)
 - Voz: `motor=gcp`, `voz_en/voz_es`, `rate/pitch`, `estilo_narracion` en 1 línea ES.
 
 ### 3. Guardar con el script (no a mano)
@@ -80,25 +84,26 @@ python scripts/gestionar_estilos.py --mostrar <slug>
 En Windows usa `.venv\Scripts\python.exe` en lugar de `python`.
 
 ### 4. Confirmación
-Pide visto bueno mostrando `contacto conceptual`: describe cómo se verá el protagonista en
-3 escenas distintas con la MISMA ropa. Si el usuario pide cambios (ej. “protagonista con
-polo verde”), actualiza `estilo.json` y revalida. Recién entonces el estilo queda listo para
+Pide visto bueno mostrando `contacto conceptual`: describe 2 escenas CON protagonista (misma ropa)
+y 1 SIN protagonista (solo fondo/objetos del estilo). Si el usuario pide cambios (ej. “protagonista
+con polo verde”), actualiza `estilo.json` y revalida. Recién entonces el estilo queda listo para
 `/ideacion-video` vía `parametros.estilo_id`.
 
 ## Esquema de `estilos/<id>/`
 
 ```
 estilos/<id>/
-  estilo.json       # character_ficha, style_ficha, anti_drift, paleta, fondo, prompt_template
+  estilo.json       # character_ficha, style_ficha, anti_drift_estilo/personaje, frases EN, 2 prompt_templates
   tts.json          # motor gcp default, voz_en/voz_es, edge_fallback_*, rate/pitch, estilo_narracion
-  referencias/*.png # copias versionadas (las que se envían al generador cada escena)
+  referencias/*.png # copias versionadas (las que se envían/adjuntan en cada escena)
   muestra-voz.mp3 (opcional) + descripcion-voz.txt (opcional)
 ```
 
 ## Verificación final
 1. ¿`estilos/catalogo.json` incluye el id y `gestionar_estilos.py --validar` dice OK?
-2. ¿`character_ficha` fija outfit único con hex + NO shoes/hat/glasses?
-3. ¿`style_ficha` fija fondo hex + no photorealism/3D + 9:16?
-4. ¿`tts.json` tiene motor `gcp` + voces EN/ES + fallback edge?
-5. ¿Referencias existen y son ≤3 (límite Qwen)?
+2. ¿`character_ficha` fija outfit único con hex + NO shoes/hat/glasses (biblioteca, no presencia obligatoria)?
+3. ¿`style_ficha` fija fondo hex + no photorealism/3D + 9:16 (siempre)?
+4. ¿Existen `anti_drift_estilo`, `anti_drift_personaje`, ambas frases EN y ambos `prompt_template_*`?
+5. ¿`tts.json` tiene motor `gcp` + voces EN/ES + fallback edge?
+6. ¿Referencias existen y son ≤3 (límite Qwen)?
 Si todo cumple, anuncia: “Estilo `<id>` listo, úsalo en ideación como `estilo_id`”.

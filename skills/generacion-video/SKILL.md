@@ -228,9 +228,13 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --export-prompts
 > `--export-prompts` lo (re)escribe; si ya existe y lo editaste a mano, el paso de imágenes lo
 > respeta.
 
-### Paso 4 — Generar imágenes por escena (proveedor intercambiable)
+### Paso 4 — Generar imágenes por escena (MODULAR: vía A por API o vía B manual)
 
-Soporta **dos proveedores** (elige con `--proveedor` o `IMAGEN_PROVEEDOR`):
+El pipeline soporta **dos caminos** (el usuario ya no tiene free tier de API, así que ambos son
+de primera clase). Si el usuario no dijo cuál en mensajes anteriores, **pregúntale obligatoriamente**
+antes del Paso 4: “¿Vía A (genero yo por API) o vía B (generas tú en la web y me pasas las rutas)?”.
+
+**Vía A — por API** (tú generas). Soporta **dos proveedores** (elige con `--proveedor` o `IMAGEN_PROVEEDOR`):
 
 | Proveedor | `--proveedor` | API key | Modelo por defecto | `--model` alternativo |
 |---|---|---|---|---|
@@ -252,8 +256,9 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
   es normal. Si el usuario lo pide, ajustá `QWEN_RPM` en `.env`. Si pasas más de 3 referencias
   a Qwen, el script trunca automáticamente a 3 (máximo del modelo) con aviso.
 - **Estilo del catálogo (preferido):** si el guion trae `parametros.estilo_id` (ej. `tom-jerry`,
-  `palitos-doodle`), el script carga `estilos/<id>/estilo.json` automáticamente: inyecta
-  `character_ficha + style_ficha + anti_drift` en cada prompt (si faltan) y usa sus referencias.
+  `palitos-doodle`), el script carga `estilos/<id>/estilo.json` automáticamente: `STYLE` +
+  `anti_drift_estilo` siempre; `CHARACTER` + `anti_drift_personaje` solo si la escena trae
+  `incluye_protagonista=true`. También usa sus referencias.
   Puedes forzarlo/verlo con:
 
   ```bash
@@ -263,11 +268,11 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
 
   Prioridad de referencias: `--referencia` CLI > `--estilo-id`/`estilo_id` del guion >
   `parametros.imagen_referencia`. Las imágenes se **envían reales (base64) en cada llamada**.
-- **Anti-drift Qwen (por qué no cambia el polo/gorra):** el drift se evita con 5 capas, no solo la imagen:
+- **Anti-drift (protagonista solo cuando aparece):** el drift se evita con 5 capas:
   1. Protagonista con outfit ÚNICO fijo en `character_ficha` (`ALWAYS wearing` + hex + `NO shoes/hat/glasses`).
-  2. `character_ficha + style_ficha` verbatim al inicio de CADA prompt + `anti_drift` al final (lo hace Fase 1 y lo refuerza `--estilo-id`).
+  2. `STYLE` siempre + `anti_drift_estilo` siempre; `CHARACTER` + `anti_drift_personaje` SOLO si la escena trae `incluye_protagonista=true` (lo decide Fase 1; `--estilo-id` lo refuerza sin forzar la taza en charts/objetos).
   3. Misma `seed` por video + `prompt_extend=false`.
-  4. Referencia(s) en cada llamada (máx 3 en Qwen, se trunca con aviso).
+  4. Referencia(s) en cada llamada (máx 3 en Qwen, se trunca con aviso). En web el usuario la adjunta a mano (la frase EN inicial lo exige); por API se envía sola.
   5. Contact sheet obligatorio para detectar drift antes de ensamblar; si una escena cambia color/ropa, regenera solo esa con `--solo escena-XX --overwrite`.
 - **Estilo ad-hoc (sin catálogo):** solo para videos puntuales. Pasa refs con `--referencia`
   (repetible o comas, pueden estar fuera del proyecto):
@@ -287,6 +292,23 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
   ref es gato, el texto gana y la ref se ignora.
 - **Nombrado:** `MM_SS_<slug>.png`. Si una imagen falla, el script deja el detalle en
   `<sesión>/imagenes/reporte.json`.
+
+**Vía B — manual en web (el usuario genera).** Para cuando no hay free tier de API o prefiere
+Qwen web / otra IA:
+1. Exporta `prompts.txt` igual que en vía A. Cada bloque ya viene listo para copiar/pegar:
+   empieza con la frase EN (`Using the attached reference image(s) as...`), trae `CHARACTER`
+   solo si `incluye_protagonista=true`, e indica en comentarios `#` qué referencia(s) adjuntar.
+2. Dile al usuario: “Adjunta la(s) referencia(s), pega 1 prompt, genera, descarga; repite por
+   escena. Nómbralas `1.png`…`N.png` en orden de escena y dime la carpeta (ej. `~/Downloads`)”.
+3. Intégralas tú (no a mano) con:
+   ```bash
+   python scripts/integrar_imagenes_manuales.py --guion <sesión>/guion.json --desde ~/Downloads
+   # Mapeo explícito si no son 1.png..N.png:
+   # python scripts/integrar_imagenes_manuales.py --guion <sesión>/guion.json --desde ~/Downloads --mapa "a.png:escena-01,b.png:escena-02"
+   ```
+   El script valida cantidad/legibilidad, copia a `<sesión>/imagenes/MM_SS_*.png` y genera el
+   `contact_sheet.png`. En Windows usa `.venv\Scripts\python.exe`.
+4. Continúa en el Paso 4.5 igual que vía A.
 
 ### Paso 4.5 — Aprobar las imágenes con el usuario (obligatorio)
 

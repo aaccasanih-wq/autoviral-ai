@@ -7,11 +7,17 @@
   "fondo": "#FFFFFF blanco puro, sin sombras ni texturas",
   "paleta": ["#FFFFFF fondo", "#000000 trazo", "#FFD93D protagonista amarillo", "#A06BC5 morado", "#7BC67B verde", "#E8833A naranja", "#5AA9E6 azul"],
   "trazo": "messy black outline, trazo a mano alzada, grosor irregular",
-  "anti_drift": "Keep the SAME protagonist identical in EVERY scene: bald oval head, dot eyes, stick limbs, solid bright yellow t-shirt, NO shoes, NO hat, NO glasses, NO color change. Do NOT dress the protagonist in purple, green, orange or blue. Do NOT add footwear, hats or accessories. Do NOT switch to photorealistic, 3D or shaded style. Keep pure white background. Secondary characters must keep their declared color for the whole video.",
+  "anti_drift": "DEPRECATED (v1, solo compat): Keep the SAME protagonist identical in EVERY scene. Usar anti_drift_estilo + anti_drift_personaje.",
+  "anti_drift_estilo": "Keep the same art style and background in every image: flat 2D hand-drawn doodle illustration, messy black outline, bright flat solid colors, minimal shading, no gradients, no photorealism, no 3D, no shaded style. Keep clean pure white background (#FFFFFF) in every scene.",
+  "anti_drift_personaje": "When the Protagonist Stick appears, keep it identical: large oval bald head, dot eyes, thin stick limbs, solid bright yellow t-shirt (#FFD93D) with no patterns, NO shoes, NO hat, NO glasses, NO pants, NO color change. Do NOT dress it in purple, green, orange or blue. Do NOT add footwear, hats or accessories. Secondary sticks keep their declared fixed color (never yellow) for the whole video.",
+  "frase_referencia_con": "Using the attached reference image(s) as the style and character reference, generate a new image in the same art style with the same protagonist.",
+  "frase_referencia_sin": "Using the attached reference image(s) as the style and background reference only. Do not add any mascot or character unless named in the prompt.",
   "negativos": ["photorealistic", "3D", "cambiar color de polo del protagonista", "zapatillas", "gorra", "gafas", "sombras realistas", "degradados", "fondo gris o con textura"],
   "personajes_secundarios": "Opcional, máximo 2 por escena. Cada secundario con color fijo declarado (ej. Secondary Stick in solid purple t-shirt). Nunca usan amarillo. Sin zapatos ni accesorios.",
   "referencias": ["estilos/palitos-doodle/referencias/referencia_flofy.jpg"],
-  "prompt_template": "{character_ficha} {style_ficha} {accion}. {anti_drift}",
-  "seed_policy": "misma seed por video (auto-derivada del título), prompt_extend=false, enviar referencia en cada llamada",
-  "version": 1
+  "prompt_template": "DEPRECATED (v1): {character_ficha} {style_ficha} {accion}. {anti_drift}",
+  "prompt_template_con_personaje": "{frase_referencia_con} {character_ficha} {style_ficha} {accion}. {anti_drift_personaje} {anti_drift_estilo}",
+  "prompt_template_sin_personaje": "{frase_referencia_sin} {style_ficha} {accion}. {anti_drift_estilo}",
+  "seed_policy": "misma seed por video, prompt_extend=false, enviar referencia en cada llamada",
+  "version": 2
 }

@@ -17,6 +17,14 @@
       "carpeta": "estilos/palitos-doodle",
       "estilo_json": "estilos/palitos-doodle/estilo.json",
       "tts_json": "estilos/palitos-doodle/tts.json"
+    },
+    {
+      "id": "cafe-retro",
+      "nombre": "Café Retro 50s",
+      "descripcion": "Mascota taza de café rubber-hose 50s, fondo crema, noticiero vintage",
+      "carpeta": "estilos/cafe-retro",
+      "estilo_json": "estilos/cafe-retro/estilo.json",
+      "tts_json": "estilos/cafe-retro/tts.json"
     }
   ]
 }

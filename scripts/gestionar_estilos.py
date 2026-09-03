@@ -58,13 +58,19 @@ def cmd_mostrar(estilo_id: str) -> int:
     print(f"Descripción: {entry.get('descripcion', '')}")
     print(f"\n[CHARACTER]\n{estilo.get('character_ficha', '')}")
     print(f"\n[STYLE]\n{estilo.get('style_ficha', '')}")
-    print(f"\n[ANTI-DRIFT]\n{estilo.get('anti_drift', '')}")
+    if estilo.get("anti_drift") and not str(estilo.get("anti_drift", "")).startswith("DEPRECATED"):
+        print(f"\n[ANTI-DRIFT]\n{estilo.get('anti_drift', '')}")
     print(f"\n[REFERENCIAS]\n" + "\n".join(f"  - {r}" for r in estilo.get("referencias", [])))
     print(f"\n[TTS default {tts.get('motor', 'gcp')}] voz_en={tts.get('voz_en')} voz_es={tts.get('voz_es')} "
           f"rate={tts.get('rate')} pitch={tts.get('pitch')}")
     print(f"  estilo: {tts.get('estilo_narracion', '')}")
     print(f"  fallback edge: {tts.get('edge_fallback_en')}/{tts.get('edge_fallback_es')}")
-    print(f"\n[TEMPLATE]\n{estilo.get('prompt_template', '')}")
+    print(f"\n[ANTI-DRIFT ESTILO (siempre)]\n{estilo.get('anti_drift_estilo', '')}")
+    print(f"\n[ANTI-DRIFT PERSONAJE (solo si aparece)]\n{estilo.get('anti_drift_personaje', '')}")
+    print(f"\n[FRASE REF CON]\n{estilo.get('frase_referencia_con', '')}")
+    print(f"\n[FRASE REF SIN]\n{estilo.get('frase_referencia_sin', '')}")
+    print(f"\n[TEMPLATE CON]\n{estilo.get('prompt_template_con_personaje', '')}")
+    print(f"\n[TEMPLATE SIN]\n{estilo.get('prompt_template_sin_personaje', '')}")
     return 0
 
 
@@ -83,7 +89,10 @@ def cmd_validar() -> int:
         estilo_path = RAIZ / e.get("estilo_json", "")
         if estilo_path.is_file():
             estilo = json.loads(estilo_path.read_text(encoding="utf-8"))
-            for req in ("character_ficha", "style_ficha", "anti_drift", "referencias"):
+            for req in ("character_ficha", "style_ficha", "anti_drift_estilo",
+                        "anti_drift_personaje", "frase_referencia_con",
+                        "frase_referencia_sin", "prompt_template_con_personaje",
+                        "prompt_template_sin_personaje", "referencias"):
                 if not estilo.get(req):
                     errores.append(f"{sid}: estilo.json sin '{req}'")
             for r in estilo.get("referencias", []):
@@ -128,13 +137,17 @@ def cmd_crear(args) -> int:
         "fondo": args.fondo or "",
         "paleta": [],
         "trazo": "",
-        "anti_drift": "Keep the SAME protagonist identical in EVERY scene: same clothes, colors, proportions. Do NOT change outfit, add shoes/hats/glasses, or switch to photorealistic/3D. Keep background identical.",
+        "anti_drift_estilo": "Keep the same art style and background in every image: same strokes, palette and textures, no photorealism, no 3D. Keep background identical in every scene.",
+        "anti_drift_personaje": "When the protagonist appears, keep it identical: same clothes, colors and proportions. Do NOT change outfit, add shoes/hats/glasses.",
+        "frase_referencia_con": "Using the attached reference image(s) as the style and character reference, generate a new image in the same art style with the same protagonist.",
+        "frase_referencia_sin": "Using the attached reference image(s) as the style and background reference only. Do not add any mascot or character unless named in the prompt.",
         "negativos": ["photorealistic", "3D", "cambiar ropa", "zapatos", "gorra"],
         "personajes_secundarios": "Declarar color fijo por secundario, nunca el del protagonista.",
         "referencias": refs_dest,
-        "prompt_template": "{character_ficha} {style_ficha} {accion}. {anti_drift}",
+        "prompt_template_con_personaje": "{frase_referencia_con} {character_ficha} {style_ficha} {accion}. {anti_drift_personaje} {anti_drift_estilo}",
+        "prompt_template_sin_personaje": "{frase_referencia_sin} {style_ficha} {accion}. {anti_drift_estilo}",
         "seed_policy": "misma seed por video, prompt_extend=false",
-        "version": 1,
+        "version": 2,
     }
     tts = {
         "motor": "gcp",
