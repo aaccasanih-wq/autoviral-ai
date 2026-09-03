@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "default_tts_motor": "gcp",
+  "estilos": [
+    {
+      "id": "tom-jerry",
+      "nombre": "Tom & Jerry vintage cartoon",
+      "descripcion": "Caricatura 2D vintage 90s, fondo azul #BFE0EC, Tom + Jerry fijos. Tono juguetón.",
+      "carpeta": "estilos/tom-jerry",
+      "estilo_json": "estilos/tom-jerry/estilo.json",
+      "tts_json": "estilos/tom-jerry/tts.json"
+    },
+    {
+      "id": "palitos-doodle",
+      "nombre": "Palitos doodle Flofy",
+      "descripcion": "Stick figures trazo desordenado, fondo blanco, protagonista polo amarillo fijo. Tono directo e ingenioso.",
+      "carpeta": "estilos/palitos-doodle",
+      "estilo_json": "estilos/palitos-doodle/estilo.json",
+      "tts_json": "estilos/palitos-doodle/tts.json"
+    }
+  ]
+}

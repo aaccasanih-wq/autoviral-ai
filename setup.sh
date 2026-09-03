@@ -40,7 +40,9 @@ else
     FFMPEG_BIN=$(.venv/bin/python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
     if [[ -f "$FFMPEG_BIN" ]]; then
       ln -sf "$FFMPEG_BIN" .venv/bin/ffmpeg
-      ln -sf .venv/bin/ffmpeg .venv/bin/ffprobe 2>/dev/null || true
+      # NOTA: no creamos symlink ffprobe -> ffmpeg (son binarios distintos; imageio-ffmpeg
+      # solo trae ffmpeg). El pipeline lee duraciones con mutagen y usa ffmpeg directo,
+      # por lo que ffprobe del sistema es opcional.
       chmod +x .venv/bin/ffmpeg 2>/dev/null || true
       echo "    ffmpeg vinculado desde imageio-ffmpeg: $FFMPEG_BIN"
       echo "    (ffmpeg disponible vía .venv/bin/ffmpeg con libass para subtítulos)"

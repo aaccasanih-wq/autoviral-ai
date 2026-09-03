@@ -1,0 +1,17 @@
+{
+  "id": "tom-jerry",
+  "nombre": "Tom & Jerry vintage cartoon",
+  "descripcion": "Caricatura 2D vintage estilo Tom y Jerry 90s, fondo azul pálido sólido, personajes fijos Tom (gato) y Jerry (ratón). Para finanzas/historias con tono juguetón.",
+  "character_ficha": "CHARACTER: Tom, a gray and white anthropomorphic cat with short gray fur (#8A9BA8), white muzzle, white belly and white paws, large yellow-green eyes, pink nose, pink inner ears, thin gray tail with white tip, ALWAYS wearing an olive green turtleneck sweater (#6B8E5A) and khaki beige pants (#C2B280), no shoes, no hat, no glasses, no extra clothes; and Jerry, a small brown mouse (#8B5A2B) with large round pink ears, ALWAYS wearing a black tuxedo with white shirt and black bow tie, no shoes, no hat. Both in vintage Tom and Jerry cartoon style with clean bold black outlines.",
+  "style_ficha": "STYLE: vintage Tom and Jerry 2D cartoon illustration, flat colors, clean bold black outlines, minimal shading, no gradients, no photorealism, no 3D, solid pale light blue background (#BFE0EC), simple iconic props, soft even lighting, vertical 9:16 composition.",
+  "fondo": "#BFE0EC sólido, sin degradados ni texturas",
+  "paleta": ["#BFE0EC fondo", "#8A9BA8 gris Tom", "#FFFFFF blanco", "#6B8E5A jersey oliva", "#C2B280 khaki", "#8B5A2B marrón Jerry", "#000000 tuxedo"],
+  "trazo": "clean bold black outlines, grosor uniforme, sin sketch",
+  "anti_drift": "Keep the SAME two characters identical in EVERY scene: Tom with olive green turtleneck and khaki pants, Jerry with black tuxedo. Do NOT change their clothes, colors, fur, eyes or proportions. Do NOT add shoes, hats, glasses or new outfits. Do NOT switch to photorealistic or 3D. Keep solid #BFE0EC background in every scene. If a secondary human appears (e.g. bank teller), draw as simple cartoon human with white shirt and tie, never as protagonist.",
+  "negativos": ["photorealistic", "3D render", "cambiar ropa", "zapatos", "gorra", "gafas", "fondo degradado", "sombras realistas"],
+  "personajes_secundarios": "Solo Tom y Jerry como protagonistas. Humanos secundarios (cajero, gerente) siempre simples: piel clara, camisa blanca, corbata, sin protagonismo, nunca con ropa de Tom/Jerry.",
+  "referencias": ["estilos/tom-jerry/referencias/referencia-01.png", "estilos/tom-jerry/referencias/referencia-03.png", "estilos/tom-jerry/referencias/referencia-04.png"],
+  "prompt_template": "{character_ficha} {style_ficha} {accion}. {anti_drift}",
+  "seed_policy": "misma seed por video (auto-derivada del título), prompt_extend=false",
+  "version": 1
+}

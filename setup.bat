@@ -45,7 +45,8 @@ if errorlevel 1 (
         for /f "usebackq delims=" %%p in ("%TEMP%\ffmpeg_path.txt") do (
             if exist "%%p" (
                 copy /y "%%p" ".venv\Scripts\ffmpeg.exe" >nul 2>nul
-                copy /y "%%p" ".venv\Scripts\ffprobe.exe" >nul 2>nul
+                rem NOTA: no copiamos ffprobe.exe (imageio-ffmpeg solo trae ffmpeg; son distintos).
+                rem El pipeline usa mutagen + ffmpeg directo, ffprobe del sistema es opcional.
                 echo     ffmpeg vinculado desde imageio-ffmpeg a .venv\Scripts\ffmpeg.exe
             )
         )

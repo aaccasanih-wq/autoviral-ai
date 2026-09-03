@@ -192,21 +192,57 @@ def _concatenar_audio(entradas: list[Path], salida: Path) -> bool:
         tmp.unlink(missing_ok=True)
 
 
+def _cargar_tts_estilo(guion: dict) -> dict:
+    """TTS defaults del catálogo estilos/<id>/tts.json (si guion trae estilo_id)."""
+    try:
+        estilo_id = ((guion.get("parametros") or {}).get("estilo_id") or "").strip()
+        if not estilo_id:
+            return {}
+        from pathlib import Path as _P
+        import json as _json
+        raiz = _P(__file__).resolve().parent.parent
+        cat = _json.loads((raiz / "estilos" / "catalogo.json").read_text(encoding="utf-8"))
+        entry = next((e for e in cat.get("estilos", []) if e["id"] == estilo_id), None)
+        if not entry:
+            return {}
+        tts = _json.loads((raiz / entry["tts_json"]).read_text(encoding="utf-8"))
+        # Elegir voz según idioma del guion (en -> voz_en, es -> voz_es)
+        idioma = str((guion.get("parametros") or {}).get("idioma", "es")).lower()
+        voz_key = "voz_en" if idioma.startswith("en") else "voz_es"
+        out = {"motor": tts.get("motor", "gcp"), "rate": tts.get("rate"), "pitch": tts.get("pitch")}
+        if tts.get(voz_key):
+            out["voz"] = tts[voz_key]
+        return {k: v for k, v in out.items() if v}
+    except Exception:
+        return {}
+
+
 def _resolver_config(args, guion: dict) -> tuple[str, str, str, str]:
-    """Resuelve (motor, voz, rate, pitch) con prioridad CLI > guion.parametros.tts > .env > default."""
+    """Resuelve (motor, voz, rate, pitch).
+
+    Prioridad: CLI > guion.parametros.tts > estilos/<id>/tts.json > .env > default (gcp).
+    Default del proyecto: gcp (ver tts_motor_por_defecto).
+    """
     tts_guion = (guion.get("parametros") or {}).get("tts") or {}
     if not isinstance(tts_guion, dict):
         tts_guion = {}
+    tts_estilo = _cargar_tts_estilo(guion)
 
-    motor = (args.motor or tts_guion.get("motor") or tts_motor_por_defecto()).strip().lower()
+    motor = (args.motor or tts_guion.get("motor") or tts_estilo.get("motor")
+             or tts_motor_por_defecto()).strip().lower()
     if motor not in MOTORES:
-        print(f"[audio] Motor desconocido '{motor}'; uso 'edge'.", file=sys.stderr)
-        motor = "edge"
+        print(f"[audio] Motor desconocido '{motor}'; uso 'gcp'.", file=sys.stderr)
+        motor = "gcp"
 
-    voz = (args.voz or tts_guion.get("voz") or VOZ_POR_MOTOR.get(motor)).strip()
-    rate = str(args.rate if args.rate is not None else tts_guion.get("rate") or RATE_DEF)
+    voz = (args.voz or tts_guion.get("voz") or tts_estilo.get("voz")
+           or VOZ_POR_MOTOR.get(motor)).strip()
+    rate = str(args.rate if args.rate is not None else tts_guion.get("rate")
+               or tts_estilo.get("rate") or RATE_DEF)
     pitch = str(args.pitch if args.pitch is not None else tts_guion.get("pitch")
-                or PITCH_DEF.get(motor, "+0Hz"))
+                or tts_estilo.get("pitch") or PITCH_DEF.get(motor, "+0Hz"))
+    if tts_estilo:
+        print(f"[audio] TTS del estilo '{(guion.get('parametros') or {}).get('estilo_id')}': "
+              f"motor={motor} voz={voz} rate={rate} pitch={pitch}")
     return motor, voz, rate, pitch
 
 
@@ -217,8 +253,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--outdir", default=None,
                     help="Carpeta de salida. Por defecto <carpeta del guion>/audio.")
     ap.add_argument("--motor", default=None, choices=list(MOTORES),
-                    help="Motor TTS. Default: parametros.tts.motor del guion, TTS_MOTOR del .env, "
-                         "o automático (gcp si hay GCP_TTS_API_KEY; si no edge).")
+                    help="Motor TTS. Default del proyecto: gcp (Google Cloud). "
+                         "Prioridad: CLI > guion.tts > estilo tts.json > TTS_MOTOR > gcp "
+                         "(fallback a edge si no hay API key).")
     ap.add_argument("--voz", default=None,
                     help="Voz del motor (edge: es-ES-ElviraNeural; gcp: es-ES-Neural2-F).")
     ap.add_argument("--rate", default=None,
@@ -236,9 +273,20 @@ def main(argv: list[str] | None = None) -> int:
     motor, voz, rate, pitch = _resolver_config(args, guion)
     apikey = gcp_tts_apikey() if motor == "gcp" else None
     if motor == "gcp" and not apikey:
-        print("[audio] Motor 'gcp' sin GCP_TTS_API_KEY en .env. "
-              "Añade la clave o usa --motor edge.", file=sys.stderr)
-        return 2
+        # Default del proyecto es gcp, pero sin API key hacemos fallback a edge
+        # para no romper instalaciones nuevas. El agente debe haber preguntado
+        # al usuario (ver skill ideacion-video: confirmar motor TTS).
+        print("[audio] AVISO: motor 'gcp' es el default pero no hay GCP_TTS_API_KEY "
+              "en .env. Fallback automático a 'edge' (gratis, sin clave). "
+              "Para usar gcp, añade la clave o usa --motor edge explícito.", file=sys.stderr)
+        motor = "edge"
+        from envutil import edge_tts_voz_por_defecto as _edge_voz
+        # Si la voz venía de default gcp, cambiar a default edge salvo que el
+        # usuario la fijó explícitamente en CLI/guion.
+        if voz == gcp_tts_voz_por_defecto():
+            voz = _edge_voz()
+        if pitch == "0":
+            pitch = "+0Hz"
 
     outdir = Path(args.outdir) if args.outdir else directorio_sesion(args.guion) / "audio"
     outdir.mkdir(parents=True, exist_ok=True)

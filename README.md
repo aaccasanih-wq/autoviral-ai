@@ -5,19 +5,19 @@ Reels) con IA: describe una idea en lenguaje natural y un agente orquesta toda l
 ideación y el guion al audio narrado, la transcripción con timestamps, la imagen por escena y el
 video final editado.
 
-> **Estado:** v1.0 · Licencia MIT · [Detalles y hoja de ruta](./PROJECT.md)
+> **Estado:** v1.1 · Licencia MIT · [Detalles y hoja de ruta](./PROJECT.md)
 
 ---
 
 ## Qué hace
 
-El pipeline tiene **dos fases**, cada una gobernada por una **skill** que el agente carga según la
-fase:
+El pipeline tiene **dos fases + catálogo de estilos**, cada una gobernada por una **skill**:
 
 | Fase | Skill | Qué produce |
 |---|---|---|
-| **1 · Ideación Creativa** | `/ideacion-video` | Idea refinada + parámetros + **guion estructurado** (`guion.json`) confirmado. Nunca genera media. |
-| **2 · Producción** | `/generacion-video` | Audio (`edge-tts`) → `.srt` (`faster-whisper`) → imagen por escena (**Gemini** o **Alibaba Qwen**) → aprobación de las imágenes (contact sheet) → **video final** (FFmpeg / Kinocut MCP) + revisión post-producción. |
+| **1 · Ideación Creativa** | `/ideacion-video` | Idea refinada + `estilo_id` + `motor TTS (gcp default)` + **guion** (`guion.json`) confirmado. Nunca genera media. |
+| **2 · Producción** | `/generacion-video` | Audio (`gcp` default, fallback `edge`) → `.srt/.ass` (`faster-whisper`) → imagen por escena (**Gemini** o **Qwen**, con estilo + anti-drift) → aprobación (contact sheet) → **video final** (FFmpeg con subtítulos quemados) + revisión. |
+| **Estilos** | `/creacion-estilo` | Guarda/crea estilos reutilizables en `estilos/<id>/` (look + voz) a partir de referencias + muestra de voz. |
 
 El flujo es **agente-orquestado**: el agente interpreta lenguaje natural, carga la skill y ejecuta
 cada etapa con herramientas locales (`scripts/*.py`) y servidores **MCP** (Gemini imagenes, Kinocut
@@ -29,12 +29,12 @@ edición).
 
 | Componente | Rol | Tipo |
 |---|---|---|
-| **edge-tts / Google Cloud TTS** | Audio narrado (TTS **modular**: `--motor edge\|gcp`) | edge: servicio online gratis de Microsoft · gcp: API con free tier mensual |
-| **faster-whisper** | Transcripción a `.srt` con timestamps | Local (Python) |
+| **Google Cloud TTS / edge-tts** | Audio narrado (TTS default **`gcp`**, fallback `edge`) | gcp: mejor calidad, free tier mensual · edge: gratis sin clave |
+| **faster-whisper** | Transcripción a `.srt/.ass` con timestamps palabra-a-palabra | Local (Python) |
 | **Gemini Nano Banana 2** (`gemini-3.1-flash-image-preview`) | Imagen por escena | MCP (`nano-banana-2-mcp`) vía `npx` |
-| **Alibaba Qwen** (`qwen-image-2.0/3.0`) | Imagen por escena (alternativa a Gemini) — con **seed de consistencia** por video | DashScope (HTTP) |
-| **Kinocut** (`kino`) | Edición: concat, overlay, subtítulos, resize, quality gate | MCP local / CLI |
-| **FFmpeg** | Motor multimedia subyacente | Dependencia del sistema |
+| **Alibaba Qwen** (`qwen-image-2.0/3.0`) | Imagen por escena — con **seed por video + estilos reutilizables + anti-drift** | DashScope (HTTP) |
+| **Kinocut** (`kino`) | Edición alternativa: concat, overlay, subtítulos, resize, quality gate | MCP local / CLI (opcional) |
+| **FFmpeg (imageio-ffmpeg)** | Motor multimedia + subtítulos quemados (libass) | Fallback automático sin instalar nada |
 | **Agente** (Claude Code · OpenCode · DeepSeek Harness) | Orquesta el pipeline | Cliente IA |
 
 > **Costo:** `edge-tts`, `faster-whisper` y Kinocut son gratuitos/open-source. Gemini *Nano Banana 2*
@@ -49,15 +49,20 @@ edición).
 autoviral-ai/
 ├── skills/                     # Skills (bundle <nombre>/SKILL.md) — fuente canónica
 │   ├── ideacion-video/SKILL.md
-│   └── generacion-video/SKILL.md
+│   ├── generacion-video/SKILL.md
+│   └── creacion-estilo/SKILL.md
+├── estilos/                    # Catálogo reutilizable (no hardcodeado en skills)
+│   ├── catalogo.json           # índice {id, nombre, carpeta}
+│   ├── tom-jerry/              # estilo.json + tts.json + referencias/
+│   └── palitos-doodle/
 ├── scripts/                    # Herramientas locales del pipeline
 │   ├── verificar_entorno.py    # Paso 1: chequeo de dependencias
-│   ├── generar_audio.py        # Paso 2: edge-tts
-│   ├── transcribir.py          # Paso 3: faster-whisper -> .srt
-│   ├── generar_imagenes.py     # Paso 4: imágenes (Gemini o Alibaba Qwen)
-│   ├── ensamblar_video.py      # Paso 5: FFmpeg
+│   ├── gestionar_estilos.py    # Listar/mostrar/crear/validar estilos
+│   ├── generar_audio.py        # Paso 2: TTS default gcp, fallback edge
+│   ├── transcribir.py          # Paso 3: faster-whisper -> .srt/.ass
+│   ├── generar_imagenes.py     # Paso 4: imágenes (Gemini o Qwen + --estilo-id anti-drift)
+│   ├── ensamblar_video.py      # Paso 5: FFmpeg con subtítulos quemados
 │   ├── pipeline.py             # Orquestador end-to-end
-│   ├── verificar_entorno.py    # Paso 1: chequeo de dependencias
 │   ├── guion.py                # Carga/validación del guion + utilidades
 │   ├── empaquetar_skills.py    # Genera zips de skill para Claude Desktop
 │   └── copiar_skills.sh        # Resincroniza las copias de skill (proyecto + global)
@@ -80,15 +85,19 @@ autoviral-ai/
 
 ## Prerrequisitos
 
-- **Python 3.9+** — recomendado **3.11+** (para Kinocut y para evitar avisos de fin de vida útil en
-  algunas librerías de Google).
-- **FFmpeg** en el PATH (requerido por el ensamblado del video):
+- **Python 3.11+** — requerido (3.9 funciona pero 3.11+ evita avisos y es necesario para Kinocut opcional).
+  Descarga desde [python.org/downloads](https://www.python.org/downloads/) y marca **Add to PATH**.
+- **FFmpeg** — **opcional**: si no está en el PATH, `setup.sh`/`setup.bat` vinculan automáticamente
+  el binario de `imageio-ffmpeg` (ffmpeg 7.1 con libass para subtítulos quemados). Solo instálalo
+  manual si quieres el binario del sistema:
   - macOS: `brew install ffmpeg`
   - Ubuntu/Debian: `sudo apt install ffmpeg`
-  - Windows: `winget install ffmpeg` (o `choco install ffmpeg`) — cierra y reabre la terminal
-    después de instalarlo
-- **Node.js + npx** (para el servidor MCP de imágenes `nano-banana-2-mcp`).
-- **API key de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey).
+  - Windows: `winget install ffmpeg` — cierra y reabre la terminal después
+- **Node.js 18+ + npx** — solo si usarás el servidor MCP `nano-banana-2-mcp`. Si usas los scripts
+  (`generar_imagenes.py` con Gemini/Qwen por HTTP) no lo necesitas.
+- **API keys** (cada persona usa las suyas, nunca se suben — `.env` está en `.gitignore`):
+  - Imágenes: `GEMINI_API_KEY` ([AI Studio](https://aistudio.google.com/apikey)) o `QWEN_API_KEY`+`QWEN_API_HOST` (Alibaba).
+  - Voz default `gcp`: `GCP_TTS_API_KEY` (Cloud Text-to-Speech API + billing; free tier Neural2 1M chars/mes).
 
 > **Clonar el repo:** puedes clonarlo en cualquier carpeta (`git clone
 > https://github.com/aaccasanih-wq/autoviral-ai.git`); el pipeline usa rutas relativas y funciona
@@ -111,28 +120,35 @@ bash setup.sh
 setup.bat
 ```
 
-Crea `.venv`, instala las dependencias, prepara `.env` (desde `.env.example`) y verifica el entorno.
+Crea `.venv`, instala las dependencias, prepara `.env` (desde `.env.example`), vincula FFmpeg
+fallback (imageio-ffmpeg con libass) y verifica el entorno.
 
-**Nota:** el setup **no** instala FFmpeg (es una dependencia del sistema). Si no lo tienes, el
-pipeline funciona hasta la transcripción; el paso de ensamblado te pedirá instalarlo.
+**FFmpeg:** no necesitas instalarlo manual: si no está en el PATH, el setup lo vincula desde
+`imageio-ffmpeg` a `.venv/bin/ffmpeg` (macOS/Linux) o `.venv\Scripts\ffmpeg.exe` (Windows).
 
-**Notas Windows:**
-- Ejecuta la terminal como usuario normal (no administrador) y preferiblemente **PowerShell**.
-- Para activar el venv manualmente: `.venv\Scripts\Activate.ps1` (PowerShell) o
-  `.venv\Scripts\activate.bat` (CMD). Los scripts también se pueden llamar directo:
-  `.venv\Scripts\python.exe scripts\verificar_entorno.py`.
-- Los scripts `.sh` (`setup.sh`, `scripts/copiar_skills.sh`) requieren **Git Bash** (incluido con
-  Git para Windows); en su lugar puedes usar `setup.bat` y no necesitas nada más.
-- `faster-whisper` y `edge-tts` funcionan igual en Windows (CPU).
+**Notas Windows (probado con `setup.bat`):**
+- Usa **PowerShell** como usuario normal (no administrador). Si PowerShell bloquea scripts:
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` una sola vez.
+- Clona en ruta corta **sin espacios ni acentos**, ej. `C:\Proyectos\autoviral-ai`.
+- Para activar el venv: `.venv\Scripts\Activate.ps1` (PowerShell) o `.venv\Scripts\activate.bat` (CMD).
+  O llama directo sin activar: `.venv\Scripts\python.exe scripts\verificar_entorno.py`.
+- `setup.bat` es equivalente a `setup.sh`; los `.sh` (`scripts/copiar_skills.sh`) requieren **Git Bash**
+  (viene con Git para Windows) — en Windows sin Git Bash usa `setup.bat` y copia skills manual si editas `skills/`.
+- `faster-whisper` (`small` ~460MB, ~1GB RAM) y TTS funcionan en CPU. Si tu laptop es básica, usa
+  `WHISPER_MODEL=tiny` o `base` en `.env` para transcribir más rápido.
+- `py -3` es el launcher de Python en Windows (`python3` en macOS/Linux).
 
 ### Dónde van las claves API (`.env`)
 
 Las credenciales van en un archivo **`.env`** en la raíz del proyecto (ya está en `.gitignore`, así
-que nunca se sube a GitHub). Copia la plantilla y pega tu clave:
+que nunca se sube a GitHub). Copia la plantilla y pega tus claves (solo una vez):
 
 ```bash
-cp .env.example .env      # una sola vez
-# edita .env y completa GEMINI_API_KEY=
+# macOS / Linux / Git Bash:
+cp .env.example .env
+# Windows (CMD o PowerShell):
+copy .env.example .env
+# Luego edita .env con Bloc de notas/VS Code y completa tus claves.
 ```
 
 `.env` ya trae valores por defecto sensatos y comentados:
@@ -148,10 +164,10 @@ cp .env.example .env      # una sola vez
 | `QWEN_RPM` | Máx. peticiones/min a Qwen (el script las espacia) | `2` (free tier `qwen-image-2.0`; `3.0` → `5`) |
 | `IMAGEN_SEED` | Seed fija de imágenes; vacía = auto-derivada del título (misma idea = misma seed) | *(vacía)* |
 | `QWEN_PROMPT_EXTEND` | Reescritura del prompt por Qwen; `false` (default) = máxima consistencia entre escenas | `false` |
-| `TTS_MOTOR` | Motor TTS: `edge` o `gcp`; vacío = automático (gcp si hay `GCP_TTS_API_KEY`) | *(vacío)* |
-| `GCP_TTS_API_KEY` | Clave de Google Cloud Text-to-Speech (motor `gcp`) | *(vacía)* |
-| `GCP_TTS_VOZ` | Voz de Google Cloud TTS (Neural2/Wavenet/Chirp3-HD) | `es-ES-Neural2-F` |
-| `EDGE_TTS_VOZ` | Voz de edge-tts (motor `edge`) | `es-ES-ElviraNeural` |
+| `TTS_MOTOR` | Motor TTS default **`gcp`**; `edge` solo fallback o a pedido. La Fase 1 pregunta: “¿confirmas `gcp` o cambias a `edge`?” | `gcp` |
+| `GCP_TTS_API_KEY` | Clave de Google Cloud Text-to-Speech (motor `gcp` default) | *(vacía — complétala)* |
+| `GCP_TTS_VOZ` | Voz default gcp (se sobrescribe por estilo: `estilos/<id>/tts.json`) | `es-ES-Neural2-F` |
+| `EDGE_TTS_VOZ` | Voz fallback edge (si no hay API key o se pide `edge`) | `es-ES-ElviraNeural` |
 | `WHISPER_MODEL` | Modelo de whisper | `small` |
 
 > **Servidor MCP de imágenes:** si además usas `.mcp.json` (p. ej. desde Claude Code/OpenCode), la
@@ -192,13 +208,14 @@ lugar de `workspace/...`, todas las rutas se derivan de la carpeta de la sesión
 
 ```bash
 python scripts/verificar_entorno.py                             # 1. chequeo
-python scripts/generar_audio.py --guion <sesión>/guion.json     # 2. audio (TTS modular edge/gcp)
+python scripts/gestionar_estilos.py --listar                    # 1b. ver estilos guardados
+python scripts/generar_audio.py --guion <sesión>/guion.json     # 2. audio (TTS default gcp)
 python scripts/transcribir.py --audio <sesión>/audio/narracion.mp3 \
-  --outdir <sesión>/transcripcion                               # 3. .srt (faster-whisper)
+  --outdir <sesión>/transcripcion                               # 3. .srt/.ass (faster-whisper)
 python scripts/generar_imagenes.py --guion <sesión>/guion.json --export-prompts  # 4a. prompts editables
-python scripts/generar_imagenes.py --guion <sesión>/guion.json  # 4b. imágenes (usa prompts.txt si existe)
+python scripts/generar_imagenes.py --guion <sesión>/guion.json  # 4b. imágenes (usa prompts.txt + estilo_id)
 python scripts/generar_imagenes.py --guion <sesión>/guion.json --contact-sheet  # 4c. montaje
-python scripts/ensamblar_video.py --guion <sesión>/guion.json   # 5. video con efectos — tras aprobar
+python scripts/ensamblar_video.py --guion <sesión>/guion.json   # 5. video con subtítulos quemados — tras aprobar
 ```
 
 O el orquestador:
@@ -217,9 +234,10 @@ contact sheet / panel visual):
 2. **Imágenes** (`<sesión>/revision/contact_sheet.png`): el agente muestra el montaje y pregunta
    por estilo/colores/fondos. Si no hay visto bueno, regenera (con `--estilo` o `--solo escena-XX`).
 
-El video final queda en `<sesión>/video/final.mp4`. Los **subtítulos NO se queman** sobre el video
-(este ffmpeg no tiene libass; faltaría descargar otro) — el `.srt` queda como sidecar y la skill no
-pregunta al respecto.
+El video final queda en `<sesión>/video/final.mp4` **con subtítulos TikTok quemados por defecto**
+(palabra-a-palabra amarillo + hook rojo superior, vía `narracion.ass` + ffmpeg con libass de
+`imageio-ffmpeg`). El `.srt` queda como sidecar. Para sin subtítulos: `--no-subtitulos` o
+`parametros.subtitulos.enabled=false`.
 
 > **Imágenes vía MCP:** si prefieres que el agente llame a Gemini a través del servidor MCP (en
 > lugar del script CLI), conecta `.mcp.json` y usa la herramienta `generate_image` por escena
@@ -247,25 +265,23 @@ El orquestador respeta el proveedor activo:
 python scripts/pipeline.py --proveedor qwen --model qwen-image-3.0
 ```
 
-### Motor de TTS modular (edge-tts ↔ Google Cloud TTS)
+### Motor de TTS (default `gcp`, fallback `edge`)
 
-El paso de audio **no está atado a un motor**: `generar_audio.py` soporta dos motores
-intercambiables con la misma salida (mp3 por escena + `narracion.mp3` + `timings.json`).
+El paso de audio usa por defecto **Google Cloud TTS** (mejor calidad). `edge-tts` es fallback
+gratis sin clave o a pedido explícito.
 
 | Motor | Clave `.env` | Calidad | Costo |
 |---|---|---|---|
-| `edge` (default) | *(ninguna)* | Buena | Gratis — servicio online de Microsoft Edge Read-Aloud (**no es local**; hace una llamada de red, pero es gratis y sin API key) |
-| `gcp` | `GCP_TTS_API_KEY` | Muy buena (Neural2/WaveNet/Chirp 3 HD) | **Free tier mensual permanente**: WaveNet 4M chars, Neural2 1M chars (≈ USD 16 de valor), Chirp 3 HD 1M chars; luego USD 4–30 por 1M chars |
+| `gcp` (default) | `GCP_TTS_API_KEY` | Muy buena (Neural2/WaveNet/Chirp 3 HD) | **Free tier mensual**: WaveNet 4M, Neural2 1M (≈ USD 16), Chirp 3 HD 1M; luego USD 4–30/1M |
+| `edge` (fallback) | *(ninguna)* | Buena | Gratis — Microsoft Edge Read-Aloud (online, sin API key) |
 
-**Selección automática:** si `GCP_TTS_API_KEY` existe en `.env` se usa `gcp`; si no, `edge`.
-Fuerza uno con `--motor edge|gcp` o `TTS_MOTOR` en `.env`. También puede venir en el guion
-(`parametros.tts.motor`); prioridad: **CLI > guion > `.env` > automático**.
+**Selección:** default `gcp` (`TTS_MOTOR=gcp`). Si no hay API key, fallback automático a `edge`
+con aviso (no falla). Prioridad: **CLI > guion.tts > estilos/<id>/tts.json > `.env` > `gcp`**.
+La Fase 1 **pregunta siempre**: “Uso `gcp` por defecto, ¿confirmas o cambias a `edge`?”.
 
-**Tono según el video:** ajusta voz, velocidad y tono por video — con flags
-(`--voz`, `--rate -10%`, `--pitch -2`) o dejando en el guion
-`parametros.tts = {"motor": "edge", "voz": "es-MX-JorgeNeural", "rate": "-10%", "pitch": "-2"}`
-(ideal para misterio/drama; para motivación, `rate +5%`). La skill de ideación define estos valores
-según la emoción del guion.
+**Tono según estilo:** si el guion trae `estilo_id`, se usan su `voz_en/voz_es + rate/pitch`
+(ej. tom-jerry `+3%/+2` juguetón, palitos `+5%/0` ingenioso). Si es ad-hoc, según emoción:
+misterio `rate -10% pitch -2`, motivación `rate +5%`.
 
 **Cómo obtener la API key de Google Cloud TTS:**
 
@@ -281,24 +297,43 @@ según la emoción del guion.
 > ElevenLabs (~10k chars/mes, calidad top), Amazon Polly (1M chars/mes solo el primer año);
 > OpenAI TTS no tiene free tier.
 
-### Estilo consistente con imagen de referencia
+### Catálogo de estilos reutilizables (`estilos/`)
 
-Si viste una imagen o captura cuyo **estilo** quieres replicar, puedes anclarlo en todo el pipeline
-con una o varias **imágenes de referencia**. El script las envía al modelo generador como input
-junto con cada prompt, de modo que **todas** las escenas heredan ese estilo.
+No digas “estilo lúgubre con Batman” solo en texto: guarda el look + voz una vez y reutilízalo por `id`.
 
-- **Pueden estar fuera del proyecto** (p. ej. en `~/Desktop/Captura....png`); el agente lee la ruta
-  y la manda al modelo igualmente.
-- Se envían **como imágenes reales (base64) en cada llamada API**, junto con el prompt — anclaje
-  visual directo, no descripciones textuales generadas por el agente.
-- En el guion: `parametros.imagen_referencia` como **lista** de rutas (o un string): `["./ref.png"]`.
-- Por flag (tiene prioridad) al ejecutar imágenes — se puede repetir o separar por comas:
-  ```bash
-  python scripts/generar_imagenes.py --guion <sesión>/guion.json --overwrite \
-    --referencia "C:/ruta/a/referencia_1.png" \
-    --referencia "/Users/yo/Desktop/referencia_2.png"
-  ```
-- Es **opcional**: si no se define, el pipeline genera con los prompts textuales sin referencia.
+```bash
+python scripts/gestionar_estilos.py --listar          # ver tom-jerry, palitos-doodle, ...
+python scripts/gestionar_estilos.py --mostrar palitos-doodle
+python scripts/gestionar_estilos.py --validar
+# Crear uno nuevo desde referencias + descripción de voz:
+python scripts/gestionar_estilos.py --crear --id batman-90s --nombre "Batman 90s" \
+  --descripcion "Comic 90s lúgubre" --referencia "/ruta/a/comic.png" \
+  --voz-descripcion "narrador grave noir, pausado"
+```
+
+Cada `estilos/<id>/` tiene `estilo.json` (fichas CHARACTER/STYLE + `anti_drift` + hex),
+`tts.json` (motor `gcp` + voces EN/ES + rate/pitch) y `referencias/` (se envían reales cada escena).
+En ideación el agente pregunta qué estilo usar y deja `parametros.estilo_id`; en producción
+`--estilo-id` lo inyecta solo. Para crear/editar con guía usa la skill `/creacion-estilo`.
+Incluidos: `tom-jerry` (fondo `#BFE0EC`, Tom jersey oliva + Jerry tuxedo, voz cartoon `gcp +3%/+2`)
+y `palitos-doodle` (fondo blanco, protagonista siempre polo amarillo `#FFD93D`, voz ingeniosa `+5%/0`).
+
+### Anti-drift Qwen (por qué ya no cambia el polo/gorra)
+
+Qwen olvida el outfit entre llamadas. El catálogo lo fija en 5 capas:
+
+1. Outfit ÚNICO en `character_ficha` (`ALWAYS wearing` + hex + `NO shoes/hat/glasses`).
+2. Fichas verbatim en CADA prompt + `anti_drift` al final (Fase 1 + `--estilo-id` automático).
+3. Misma `seed` por video + `prompt_extend=false`.
+4. Referencia(s) reales en cada llamada (máx 3 en Qwen).
+5. Contact sheet antes de ensamblar; si una escena driftea, `--solo escena-XX --overwrite`.
+
+Secundarios con color fijo distinto al protagonista (nunca amarillo en palitos).
+
+### Estilo ad-hoc (sin guardar)
+
+Para un video puntual puedes seguir con `--referencia` suelto (puede estar fuera del proyecto)
+o `parametros.imagen_referencia` en el guion. Pero si lo reutilizarás, guárdalo con `/creacion-estilo`.
 
 ### Consistencia de personaje con seed (Qwen)
 
@@ -376,12 +411,12 @@ DeepSeek Harness descubre skills en estas rutas (nivel de proyecto y nivel de us
   y `~/.agents/skills/<nombre>/SKILL.md`.
 
 Este repo ya contiene copias instaladas en `.dsh/skills` y `.agents/skills` (proyecto) **y** en
-`~/.dsh/skills` y `~/.agents/skills` (global). Al reiniciar (oir recargar) la sesión de DeepSeek
-Harness, `ideacion-video` y `generacion-video` aparecen en el catálogo de skills y pueden invocarse
-por nombre.
+`~/.dsh/skills` y `~/.agents/skills` (global). Al reiniciar la sesión, `ideacion-video`,
+`generacion-video` y `creacion-estilo` aparecen en el catálogo y pueden invocarse por nombre.
 
-> Cada juego de archivos es una **copia** idéntica. Edítalas en `skills/` y, si cambias el contenido,
-> resincroniza las copias con `bash scripts/copiar_skills.sh` (proyecto **y** global).
+> Cada juego es una **copia** idéntica. Edítalas en `skills/` y resincroniza con
+> `bash scripts/copiar_skills.sh` (proyecto **y** global). En Windows sin Git Bash, copia manual
+> `skills/<nombre>/SKILL.md` → `.claude/skills/<nombre>/SKILL.md` etc.
 
 ### Claude Desktop (`.zip`)
 
@@ -389,16 +424,17 @@ Los zips de distribución se generan y guardan en `dist/`:
 
 - `dist/ideacion-video-skill.zip`
 - `dist/generacion-video-skill.zip`
+- `dist/creacion-estilo-skill.zip`
 
 Cada zip usa la **estructura de skill de Claude Desktop**: una **carpeta con el nombre de la skill**
 (ej. `ideacion-video/`) y dentro su **`SKILL.md`** (definición completa con frontmatter). No va un
 plano de `skill.json`/`instructions.md`/`README.md`.
 
 ```bash
-python scripts/empaquetar_skills.py   # -> dist/ideacion-video-skill.zip, dist/generacion-video-skill.zip
+python scripts/empaquetar_skills.py   # -> dist/*-skill.zip (3 zips, incluye creacion-estilo)
 ```
 
-Ambos `SKILL.md` indican al agente que tiene disponible el conector **Desktop Commander**
+Los tres `SKILL.md` indican al agente que tiene disponible el conector **Desktop Commander**
 (ejecución de código/bash) en el equipo del usuario. `generacion-video` lo usa para correr los
 scripts del pipeline; `ideacion-video` recuerda que, pese a disponer del conector, **nunca** ejecuta
 comandos (es solo ideación).

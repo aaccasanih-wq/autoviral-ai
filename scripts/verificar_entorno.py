@@ -23,9 +23,12 @@ CHECKS_LOCAL = [
     ("mutagen", "mutagen", "leer duración de audio"),
 ]
 BINARIOS = [
-    ("ffmpeg", "motor multimedia (requerido por ensamblado y por Kinocut)"),
-    ("ffprobe", "inspección de metadatos de medios"),
-    ("kino", "CLI de Kinocut (alternativa de edición MCP)"),
+    ("ffmpeg", "motor multimedia (requerido; vale PATH o fallback imageio-ffmpeg/.venv)"),
+    ("ffprobe", "inspección de metadatos (opcional; el pipeline usa mutagen + ffmpeg)"),
+]
+# Opcionales: no bloquean el pipeline ni cuentan como FALTA en el resumen.
+BINARIOS_OPCIONALES = [
+    ("kino", "CLI de Kinocut (alternativa de edición MCP, opcional)"),
 ]
 MCP_SRVS = ["nano-banana-2", "kinocut"]
 
@@ -102,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     # Extra: ffmpeg con libass para subtítulos quemados
     tiene_libass = _ffmpeg_tiene_libass()
     bins.append({"name": "ffmpeg (libass)", "presente": tiene_libass, "rol": "quemado de subtítulos ASS (imageio-ffmpeg trae ffmpeg 7.1 con libass)"})
+    opcionales = [{"name": n, "presente": _bin_ok(n), "rol": r} for n, r in BINARIOS_OPCIONALES]
     mcp = [{"name": s, "presente": _check_mcp(s), "rol": "servidor MCP de " + s} for s in MCP_SRVS]
 
     # Motores TTS (opcionales): edge siempre; gcp si hay API key configurada.
@@ -122,8 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     print("=== AutoViral AI — verificación del entorno ===")
     for grupo, items in (("Herramientas locales (pip)", local),
                          ("Binarios del sistema", bins),
+                         ("Opcionales (no bloquean)", opcionales),
                          ("Servidores MCP", mcp),
-                         ("Motores TTS (opcionales)", tts)):
+                         ("Motores TTS (default gcp, fallback edge)", tts)):
         print(f"\n{grupo}")
         for it in items:
             estado = "OK" if it["presente"] else "FALTA"

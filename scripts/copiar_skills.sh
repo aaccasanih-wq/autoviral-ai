@@ -13,7 +13,7 @@ set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FUENTE="$RAIZ/skills"
-NOMBRES=(ideacion-video generacion-video)
+NOMBRES=(ideacion-video generacion-video creacion-estilo)
 
 DESTINOS=(
   "$RAIZ/.dsh/skills"

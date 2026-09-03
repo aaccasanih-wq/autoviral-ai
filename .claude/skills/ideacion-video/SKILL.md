@@ -55,12 +55,21 @@ Pregunta lo mínimo necesario (no hagas un interrogatorio). Determina:
 - **Formato** deseado: `vertical` (9:16, Shorts/Reels/TikTok) o `horizontal` (16:9, YouTube).
 - **Idioma** de la narración (por defecto `es`).
 - **Duración objetivo** (lo típico para shorts: 15s–60s).
-- **Público objetivo** y **estilo visual** (cinemático, minimalista, mockumentary, etc.).
-- Si el usuario tiene **imágenes de referencia** (capturas o imágenes cuyo estilo quiere replicar),
-  anota sus **rutas** (una o varias; pueden estar fuera del proyecto, p. ej. en `~/Desktop/...`).
-  Guárdalas en `parametros.imagen_referencia` como **lista** de rutas (o un string) para fijar el
-  estilo de forma consistente.
+- **Público objetivo** y **estilo de animación**: NO inventes un look desde cero. Primero consulta el
+  catálogo reutilizable (nunca hardcodeado en esta skill):
+  `estilos/catalogo.json` o `python scripts/gestionar_estilos.py --listar`
+  (en Windows: `.venv\Scripts\python.exe scripts\gestionar_estilos.py --listar`).
+  Pregunta: “¿Usamos un estilo guardado (`tom-jerry`, `palitos-doodle`, …) o creamos uno nuevo?”.
+  - Si elige guardado: usa su `estilo_id`, copia sus fichas `CHARACTER:/STYLE:` + `anti_drift` verbatim
+    y sus `referencias` + `tts.json` (ver §3). No cambies ropa/colores del protagonista.
+  - Si quiere uno nuevo o trae imagen(es) + opcional audio/descripción de voz: deriva a
+    `/creacion-estilo` primero; al volver, usa el `estilo_id` recién creado.
+  - Solo si es un video puntual sin reutilización, acepta `imagen_referencia` ad-hoc (rutas fuera del
+    proyecto valen, ej. `~/Desktop/...`) y guárdalas en `parametros.imagen_referencia`.
   **CRÍTICO — referencia con personaje:** si la(s) referencia(s) muestra(n) un personaje (ej. Tom, el gato gris y blanco de Tom y Jerry), **debes inferir y describir exactamente a ese personaje** para la ficha `CHARACTER:`. No inventes otro (ej. Alex humano) porque el prompt de texto entrará en conflicto con la imagen de referencia y el modelo la ignorará. Si no estás seguro del personaje, pide al usuario que lo describa en una frase y úsala literal para la ficha. La Fase 2 reforzará automáticamente cada prompt con “Replicate the exact character from the reference image(s)”, pero la ficha debe coincidir para que funcione.
+  **CRÍTICO — anti-drift:** fija UN outfit único al protagonista (ropa + hex + `ALWAYS wearing` +
+  `NO shoes/hat/glasses`) y prohíbe cambiarlo en `anti_drift`. Secundarios con color distinto al
+  protagonista, declarado por escena. Sin esto Qwen cambia polos/gorras entre escenas.
 
 ### 2. Generar o refinar la idea
 
@@ -84,19 +93,22 @@ Antes de redactar, confirma y deja constancia de:
 | Formato | `parametros.formato` | `vertical` \| `horizontal` |
 | Idioma | `parametros.idioma` | código ISO, p. ej. `es` |
 | Nicho | `parametros.nicho` | p. ej. `finanzas`, `misterio`, `salud_bienestar` |
-| Estilo visual | `parametros.estilo_visual` | descripción corta |
+| Estilo animación | `parametros.estilo_id` | id del catálogo `estilos/` (ej. `tom-jerry`, `palitos-doodle`) — preferido a look ad-hoc |
+| Estilo visual | `parametros.estilo_visual` | descripción corta (si hay `estilo_id`, cópiala de su `estilo.json`) |
 | Público objetivo | `parametros.publico` | p. ej. `adultos 25-40` |
-| Imagen de referencia (opcional) | `parametros.imagen_referencia` | ruta a un `.png/.jpg/...` cuyo estilo animado se replicará |
-| Tono de voz (opcional) | `parametros.tts` | objeto: `{"motor": "edge"\|"gcp", "voz": "...", "rate": "-10%", "pitch": "-2"}` según la emoción del guion |
+| Imagen de referencia | `parametros.imagen_referencia` | rutas del estilo (`estilos/<id>/referencias/...`) o ad-hoc |
+| Motor TTS | `parametros.tts.motor` | `gcp` (default del proyecto) \| `edge` (fallback). **Pregunta siempre**: “Uso `gcp` por defecto, ¿confirmas o cambias a `edge`?” |
+| Tono de voz | `parametros.tts` | objeto: `{"motor": "gcp", "voz": "...", "rate": "+3%", "pitch": "+2"}`. Si hay `estilo_id`, usa su `tts.json` (voz_en/voz_es + rate/pitch); si no, según emoción |
 
-> **Tono de voz según el video (recomendado):** define `parametros.tts` acorde a la emoción del
-> guion — misterio/drama: voz grave con `rate` negativo y `pitch` negativo; motivación: voz
-> energética con `rate` positivo; finanzas/educación: voz neutra a ritmo natural. La Fase 2 lo
-> consume `generar_audio.py` automáticamente (prioridad: CLI > guion > `.env`).
+> **Motor TTS default `gcp`:** el proyecto usa Google Cloud TTS por defecto (mejor calidad).
+> `edge` solo si no hay `GCP_TTS_API_KEY` o el usuario lo pide. Pregunta explícita obligatoria en
+> Fase 1 y deja el motor elegido en `parametros.tts.motor`. La Fase 2 lo consume con prioridad:
+> CLI > `guion.tts` > `estilos/<id>/tts.json` > `.env` (`TTS_MOTOR=gcp`) > `gcp` con fallback a `edge`.
 
 > El **proveedor de imágenes** (Gemini o Alibaba Qwen) **no** se guarda en el guion: se elige al
 > producir, en la Fase 2, vía `IMAGEN_PROVEEDOR` (`gemini` o `qwen`) o el flag `--proveedor` de
-> `generar_imagenes.py`. En esta fase solo dejas `estilo_visual` y (si aplica) `imagen_referencia`.
+> `generar_imagenes.py`. En esta fase solo dejas `estilo_id` + `estilo_visual` + `imagen_referencia`.
+> Para consistencia Qwen usa además `--estilo-id` (inyecta fichas + anti_drift + refs en cada llamada).
 
 ### 4. Redactar el guion estructurado
 
@@ -120,18 +132,19 @@ Reglas de redacción:
 - La narración debe sumar ~cuando se lee en voz alta al ritmo de la duración total. Si una escena
   dura 8 s, su narración debe ser de ~1–2 líneas habladas.
 - Los `prompt_imagen` deben ser **autónomos** (sin referencias cruzadas ni pronombres ambiguos).
-- **Consistencia de personaje y estilo (OBLIGATORIO si hay personaje recurrente):** define una
-  **ficha de personaje** y una **ficha de estilo** y repítelas **literalmente (verbatim, mismas
-  palabras) al inicio de cada `prompt_imagen`**. Los modelos de imagen no recuerdan escenas
-  anteriores — la única forma de mantener al personaje idéntico entre escenas es que la descripción
-  sea idéntica. Ejemplo de ficha de personaje:
+- **Consistencia de personaje y estilo (OBLIGATORIO si hay personaje recurrente):** si hay
+  `estilo_id`, copia sus `character_ficha` + `style_ficha` + `anti_drift` de
+  `estilos/<id>/estilo.json` y repítelas **literalmente (verbatim, mismas palabras) al inicio/final
+  de cada `prompt_imagen`** (`{CHARACTER} {STYLE} {acción}. {anti_drift}`). Los modelos no recuerdan
+  escenas — la única forma de mantener al protagonista idéntico es descripción idéntica + outfit
+  único fijo (ej. palitos siempre polo amarillo `#FFD93D`, Tom siempre jersey oliva + khaki).
+  Si es ad-hoc (sin estilo), define tú las fichas con el mismo formato. Ejemplo:
   `CHARACTER: Martin, a Spanish man in his early 30s, short messy brown hair, thick eyebrows,
   light stubble, worn gray bomber jacket over a white t-shirt, blue jeans.`
-  Ejemplo de ficha de estilo:
+  Ejemplo de estilo:
   `STYLE: flat 2D cartoon illustration, clean bold outlines, muted earthy color palette, soft
   lighting, vertical 9:16 composition.`
-  Tras la ficha, añade la acción/escena concreta (sujeto + acción + iluminación + encuadre).
-  Cambia SOLO la parte de acción entre escenas.
+  Tras la ficha, añade SOLO la acción/escena concreta. Cambia SOLO la parte de acción entre escenas.
 - Los timestamps deben ser **contiguos**: el `inicio` de una escena = el `fin` de la anterior.
 - La primera escena debe `inicio_segundos = 0`.
 - Si hay imagen de referencia, guárdala dentro del proyecto (p. ej. `workspace/referencia.png`)
@@ -173,10 +186,11 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
     "formato": "vertical",
     "idioma": "es",
     "nicho": "finanzas",
+    "estilo_id": "palitos-doodle",   // id del catálogo estilos/ (preferido); null si ad-hoc
     "estilo_visual": "cinemático natural, luz suave",
     "publico": "adultos 25-40",
-    "imagen_referencia": [],   // opcional: ruta(s) .png/.jpg/.webp cuyo estilo se replicará (string o lista)
-    "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"}   // opcional
+    "imagen_referencia": [],   // rutas del estilo (estilos/<id>/referencias/...) o ad-hoc
+    "tts": {"motor": "gcp", "voz": "es-ES-Neural2-F", "rate": "+3%", "pitch": "+2"}   // default gcp; edge solo si se confirma
   },
   "escenas": [
     {
@@ -200,7 +214,7 @@ El archivo que produzcas **debe** respetar este esquema para que la Fase 2 lo co
 1. ¿Hay al menos 1 escena y la primera `inicio_segundos = 0`?
 2. ¿Los timestamps son contiguos y la última escena termina en `duracion_segundos`?
 3. ¿Cada escena tiene `narracion` y `prompt_imagen` no vacíos?
-4. ¿Se confirmaron `formato`, `idioma`, `duracion_segundos`, `estilo_visual` y `publico`?
-5. ¿El usuario confirmó explícitamente el guion?
+4. ¿Se confirmaron `formato`, `idioma`, `duracion_segundos`, `estilo_id`/`estilo_visual`, `publico` y motor TTS (`gcp` default, `edge` solo si se pide)?
+5. ¿El usuario confirmó explícitamente el guion y el estilo + voz?
 
 Si todo cumple, la Fase 1 termina. Si no, refínalo antes de cerrar.

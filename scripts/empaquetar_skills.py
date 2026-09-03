@@ -21,15 +21,18 @@ import zipfile
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-SKILLS = ("ideacion-video", "generacion-video")
+SKILLS = ("ideacion-video", "generacion-video", "creacion-estilo")
 DESCRIPCIONES = {
     "ideacion-video": ("Guía al usuario desde una idea vaga (o sin idea) hasta un guion de video "
                        "corto final, estructurado y confirmado. Fase 1: nicho, ideación y redacción. "
                        "Nunca genera audio, imágenes ni video."),
     "generacion-video": ("Ejecuta el pipeline técnico de producción de un video corto desde un "
-                         "guion confirmado: audio (TTS modular edge-tts / Google Cloud TTS), "
-                         "transcripción (.srt), imágenes por escena (Gemini o Qwen, con seed de "
-                         "consistencia por video) y ensamblado final (FFmpeg/Kinocut). Fase 2."),
+                         "guion confirmado: audio (TTS default gcp, fallback edge), "
+                         "transcripción (.srt), imágenes por escena (Gemini o Qwen, con estilos "
+                         "reutilizables y anti-drift) y ensamblado final (FFmpeg/Kinocut). Fase 2."),
+    "creacion-estilo": ("Crea un estilo de animación + voz reutilizable a partir de imágenes de "
+                        "referencia y muestra/descripción de voz. Guarda en estilos/<id>/ y lo "
+                        "registra en estilos/catalogo.json."),
 }
 
 
@@ -40,12 +43,17 @@ def _body(raw: str) -> str:
 
 
 def _readme(nombre: str) -> str:
+    usos = {
+        "ideacion-video": "crear/refinar una idea de video y obtener un guion confirmado",
+        "generacion-video": "producir un video a partir de un guion confirmado",
+        "creacion-estilo": "guardar/crear un estilo de animación + voz reutilizable",
+    }
     return f"""# Skill: {nombre}
 
 Skill de AutoViral AI para cargar en Claude Desktop.
 
 - **Nombre:** `{nombre}`
-- **Versión:** 1.0.0
+- **Versión:** 1.1.0
 - **Descripción:** {DESCRIPCIONES[nombre]}
 
 ## Carga en Claude Desktop
@@ -55,8 +63,7 @@ sistema están en `instructions.md`.
 
 ## Cómo se usa
 
-Carga la skill cuando el usuario indique que quiere crear/refinar una idea de video
-(`ideacion-video`) o producir un video a partir de un guion confirmado (`generacion-video`).
+Carga la skill cuando el usuario indique que quiere {usos.get(nombre, nombre)}.
 
 ---
 Proyecto: AutoViral AI · Licencia MIT

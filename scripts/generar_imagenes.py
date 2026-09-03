@@ -384,6 +384,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--estilo", default=None,
                     help="Ajuste global de estilo/feedback del usuario (p. ej. 'más colores "
                          "cálidos, estilo anime, fondos urbanos'). Se añade a todos los prompts.")
+    ap.add_argument("--estilo-id", default=None,
+                    help="ID del catálogo estilos/<id> (ej. tom-jerry, palitos-doodle). "
+                         "Carga character_ficha/style_ficha/anti_drift y referencias del estilo. "
+                         "También se lee de guion.parametros.estilo_id si no se pasa por CLI.")
     ap.add_argument("--referencia", action="append", default=None,
                     help="Ruta a una imagen de referencia (.png/.jpg/...) cuyo estilo se usará de "
                          "forma consistente en todas las escenas. Se puede repetir para varias "
@@ -448,11 +452,33 @@ def main(argv: list[str] | None = None) -> int:
     if prompts_editados:
         print(f"[imagenes] Usando {len(prompts_editados)} prompts editados de {prompts_path}.")
 
-    # Imágenes de referencia: prioridad a las pasadas por CLI, luego a las del guion.
+    # Estilo del catálogo: prioridad CLI --estilo-id > guion.parametros.estilo_id.
+    # Aporta character_ficha/style_ficha/anti_drift + referencias fijas anti-drift.
+    estilo_id = (args.estilo_id or (guion.get("parametros") or {}).get("estilo_id") or "").strip()
+    estilo_data: dict = {}
+    if estilo_id:
+        try:
+            import json as _json
+            from pathlib import Path as _P
+            _raiz = _P(__file__).resolve().parent.parent
+            _cat = _json.loads((_raiz / "estilos" / "catalogo.json").read_text(encoding="utf-8"))
+            _entry = next((e for e in _cat.get("estilos", []) if e["id"] == estilo_id), None)
+            if _entry:
+                estilo_data = _json.loads((_raiz / _entry["estilo_json"]).read_text(encoding="utf-8"))
+                print(f"[imagenes] Estilo catálogo '{estilo_id}': {estilo_data.get('nombre', '')} "
+                      f"(anti-drift activo, {len(estilo_data.get('referencias', []))} refs)")
+            else:
+                print(f"[imagenes] AVISO: estilo_id '{estilo_id}' no está en catalogo.json. Se ignora.",
+                      file=sys.stderr)
+        except Exception as e:
+            print(f"[imagenes] AVISO: no se pudo cargar estilo '{estilo_id}': {e}", file=sys.stderr)
+
+    # Imágenes de referencia: prioridad CLI --referencia > --estilo-id > guion.
     refs_cli: list[str] = []
     for v in (args.referencia or []):
         refs_cli += [x.strip() for x in v.split(",") if x.strip()]
-    referencias = _leer_referencias(refs_cli or imagenes_referencia(guion))
+    refs_estilo = estilo_data.get("referencias", []) if estilo_data else []
+    referencias = _leer_referencias(refs_cli or refs_estilo or imagenes_referencia(guion))
     # Qwen solo soporta 0-3 imágenes de referencia (0 = T2I, 1-3 = I2I). Si se pasan más, trunca automáticamente.
     if proveedor == "qwen" and len(referencias) > 3:
         print(f"[imagenes] AVISO: Qwen soporta máximo 3 referencias, se recibieron {len(referencias)}. "
@@ -513,11 +539,25 @@ def main(argv: list[str] | None = None) -> int:
             continue
         # Prompt final: el editado por el usuario (prompts.txt) si existe; si no, el del guion.
         base_prompt = prompts_editados.get(esc["id"]) or esc["prompt_imagen"]
+        # Anti-drift: si hay estilo del catálogo y el prompt no trae las fichas, inyectarlas.
+        # Esto fija protagonista (ropa/color exactos, sin zapatos/gorra) en CADA llamada.
+        if estilo_data:
+            cf = estilo_data.get("character_ficha", "")
+            sf = estilo_data.get("style_ficha", "")
+            ad = estilo_data.get("anti_drift", "")
+            if cf and "CHARACTER:" not in base_prompt:
+                base_prompt = f"{cf} {base_prompt}"
+            if sf and "STYLE:" not in base_prompt:
+                base_prompt = f"{base_prompt} {sf}"
+            if ad and ad[:30] not in base_prompt:
+                base_prompt = f"{base_prompt} {ad}"
         prompt = f"{base_prompt}. Aspect ratio {ratio}. High quality, crisp details."
         # Si hay referencias, instruir explícitamente al modelo para que replique personaje y estilo.
         # Sin esto, el modelo puede ignorar la(s) imagen(es) de referencia cuando el texto describe otro personaje (ej. Alex humano vs Tom gato).
         if referencias:
             prompt += " Replicate the exact character and art style from the reference image(s). Keep the main character identical in appearance to the reference across all scenes."
+            if estilo_data and estilo_data.get("anti_drift"):
+                prompt += f" {estilo_data['anti_drift']}"
         if args.estilo:
             prompt += f"\nAjuste solicitado por el usuario: {args.estilo}"
         throttle.esperar()  # respetar el RPM antes de cada petición
@@ -530,7 +570,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[imagenes] {idx}/{len(escs)} FALLÓ {esc['id']}")
 
     guardar_json({"proveedor": proveedor, "model": modelo, "ratio": ratio,
-                  "estilo": args.estilo, "seed": seed if proveedor == "qwen" else None,
+                  "estilo": args.estilo, "estilo_id": estilo_id or None,
+                  "seed": seed if proveedor == "qwen" else None,
                   "prompt_extend": prompt_extend if proveedor == "qwen" else None,
                   "fallidas": fallidas}, outdir / "reporte.json")
     print(f"[imagenes] OK: {ok} generadas, {len(fallidas)} fallidas.")

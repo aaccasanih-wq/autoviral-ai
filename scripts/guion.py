@@ -47,6 +47,8 @@ def cargar_guion(path: str | Path) -> dict[str, Any]:
              "'parametros.formato' debe ser 'vertical' o 'horizontal'.")
     _require(not params.get("idioma") or isinstance(params["idioma"], str),
              "'parametros.idioma' debe ser un string.")
+    _require(not params.get("estilo_id") or isinstance(params["estilo_id"], str),
+             "'parametros.estilo_id' debe ser un string (id del catálogo estilos/).")
     _require(_referencias_ok(params),
              "'parametros.imagen_referencia' debe ser un string no vacío o una lista de strings.")
 
@@ -116,6 +118,12 @@ def imagen_referencia(guion: dict[str, Any]) -> str | None:
     """Retrocompatibilidad: primera ruta de referencia, o ``None`` si no hay."""
     lst = imagenes_referencia(guion)
     return lst[0] if lst else None
+
+
+def estilo_id(guion: dict[str, Any]) -> str | None:
+    """ID del estilo del catálogo (``parametros.estilo_id``), o ``None`` si es ad-hoc."""
+    v = (guion.get("parametros") or {}).get("estilo_id")
+    return v.strip() if isinstance(v, str) and v.strip() else None
 
 
 def directorio_sesion(guion_path: str | Path) -> Path:

@@ -103,28 +103,33 @@ Comprueba dependencias (`edge-tts`, `faster-whisper`, `google-genai`, `imageio-f
 (con libass para subtítulos) y las herramientas MCP. Si falta algo, informa al usuario qué instalar
 (ver `README.md` → Prerrequisitos). Desde v1.1, `bash setup.sh` vincula automáticamente el binario de `imageio-ffmpeg` a `.venv/bin/ffmpeg` (con `libass`) si no hay ffmpeg del sistema, por lo que **no hace falta instalar ffmpeg manualmente** en la mayoría de casos. `verificar_entorno.py` considera ese fallback como `OK`. Si `ffmpeg` no tiene `subtitles`/`ass`, instala `pip install imageio-ffmpeg` — ese binario trae libass y `setup.sh` lo vincula.
 
-### Paso 2 — Generar audio narrado (TTS modular)
+### Paso 2 — Generar audio narrado (TTS modular, default `gcp`)
 
 ```bash
-python scripts/generar_audio.py --guion <sesión>/guion.json --voz es-ES-ElviraNeural
+python scripts/generar_audio.py --guion <sesión>/guion.json
+# Forzar edge solo si el usuario lo pidió en ideación:
+# python scripts/generar_audio.py --guion <sesión>/guion.json --motor edge --voz es-ES-ElviraNeural
 ```
 
-Genera un `.mp3` por escena y `narracion.mp3` en `<sesión>/audio/`. El **motor de TTS es modular**
-(no hardcodeado a edge-tts):
+Genera un `.mp3` por escena y `narracion.mp3` en `<sesión>/audio/`. El **motor default es `gcp`**
+(Google Cloud TTS, mejor calidad). `edge` es solo fallback sin API key o a pedido:
 
 | Motor | `--motor` | Clave `.env` | Voces ejemplo | Calidad/costo |
 |---|---|---|---|---|
-| **edge-tts** (default) | `edge` | *(no necesita)* | `es-ES-ElviraNeural`, `es-MX-JorgeNeural` | Bueno, gratis (servicio online de Microsoft Edge, sin API key) |
-| **Google Cloud TTS** | `gcp` | `GCP_TTS_API_KEY` | `es-ES-Neural2-F`, `es-ES-Wavenet-C`, `es-ES-Chirp3-HD-Aoede` | Muy bueno; free tier mensual (Neural2 1M chars ≈ 20 h de audio) |
+| **Google Cloud TTS** (default) | `gcp` | `GCP_TTS_API_KEY` | `es-ES-Neural2-F`, `en-US-Neural2-F/D`, `es-ES-Chirp3-HD-Aoede` | Muy bueno; free tier mensual (Neural2 1M chars ≈ 20 h de audio) |
+| **edge-tts** (fallback) | `edge` | *(no necesita)* | `es-ES-ElviraNeural`, `es-MX-JorgeNeural` | Bueno, gratis (servicio online de Microsoft Edge, sin API key) |
 
-- **Selección automática:** si existe `GCP_TTS_API_KEY` en `.env` se usa `gcp`; si no, `edge`.
-  Fuerza uno con `--motor edge|gcp` o `TTS_MOTOR` en `.env`.
-- **Tono según el video (importante):** el agente DEBE ajustar voz/velocidad/tono según el tema y
-  la emoción del guion. Prioridad: flags CLI > `parametros.tts` del `guion.json` > `.env` > default.
-  - `--voz` (ej. voz grave para misterio, energética para motivación)
-  - `--rate` (ej. `-10%` para suspenso, `+5%` para ritmo ágil)
-  - `--pitch` (ej. `-2` más grave/dramático, `+2` más agudo/alegre; en edge se manda como Hz)
-  - En el guion, la Fase 1 puede dejar `parametros.tts` = `{"motor": "edge", "voz": "...", "rate": "-10%", "pitch": "-2"}`.
+- **Selección:** default `gcp` (`TTS_MOTOR=gcp` en `.env`). Si no hay `GCP_TTS_API_KEY`, el script
+  hace fallback a `edge` con aviso (no falla). Fuerza uno con `--motor edge|gcp`.
+  La Fase 1 ya preguntó al usuario (“¿confirmas `gcp` o cambias a `edge`?”) y lo dejó en
+  `parametros.tts.motor`; respétalo salvo pedido explícito nuevo.
+- **Tono según estilo (importante):** si el guion trae `parametros.estilo_id`, el script carga
+  `estilos/<id>/tts.json` (voz_en/voz_es + rate/pitch del estilo) automáticamente.
+  Prioridad: flags CLI > `parametros.tts` del `guion.json` > `estilos/<id>/tts.json` > `.env` > default `gcp`.
+  - `--voz` (ej. cartoon juguetón vs deadpan ingenioso según estilo)
+  - `--rate` (ej. tom-jerry `+3%`, palitos `+5%`)
+  - `--pitch` (ej. `+2` alegre cartoon; en edge se manda como Hz `+2Hz`)
+  - En el guion, la Fase 1 deja `parametros.tts` = `{"motor": "gcp", "voz": "...", "rate": "+3%", "pitch": "+2"}`.
 
 > **Google Cloud TTS — free tier (verificado):** asignación mensual permanente por familia de
 > voces: WaveNet **4M chars**, Neural2 **1M chars** (≈ USD 16 de valor), Chirp 3 HD **1M chars**,
@@ -246,10 +251,26 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
   **2/min** en `qwen-image-2.0`; 5/min en `qwen-image-3.0`). Con 5 escenas y 2/min tarda ~2 min;
   es normal. Si el usuario lo pide, ajustá `QWEN_RPM` en `.env`. Si pasas más de 3 referencias
   a Qwen, el script trunca automáticamente a 3 (máximo del modelo) con aviso.
-- **Estilo consistente / imagen de referencia:** si el usuario quiere que las imágenes sigan un
-  estilo de una o varias imágenes de referencia (pueden estar **fuera del proyecto**, p. ej. en
-  `~/Desktop/...`), pásalas con `--referencia` (repetible o separadas por comas). Se envían al
-  modelo junto con cada prompt:
+- **Estilo del catálogo (preferido):** si el guion trae `parametros.estilo_id` (ej. `tom-jerry`,
+  `palitos-doodle`), el script carga `estilos/<id>/estilo.json` automáticamente: inyecta
+  `character_ficha + style_ficha + anti_drift` en cada prompt (si faltan) y usa sus referencias.
+  Puedes forzarlo/verlo con:
+
+  ```bash
+  python scripts/gestionar_estilos.py --listar
+  python scripts/generar_imagenes.py --guion <sesión>/guion.json --estilo-id palitos-doodle --proveedor qwen
+  ```
+
+  Prioridad de referencias: `--referencia` CLI > `--estilo-id`/`estilo_id` del guion >
+  `parametros.imagen_referencia`. Las imágenes se **envían reales (base64) en cada llamada**.
+- **Anti-drift Qwen (por qué no cambia el polo/gorra):** el drift se evita con 5 capas, no solo la imagen:
+  1. Protagonista con outfit ÚNICO fijo en `character_ficha` (`ALWAYS wearing` + hex + `NO shoes/hat/glasses`).
+  2. `character_ficha + style_ficha` verbatim al inicio de CADA prompt + `anti_drift` al final (lo hace Fase 1 y lo refuerza `--estilo-id`).
+  3. Misma `seed` por video + `prompt_extend=false`.
+  4. Referencia(s) en cada llamada (máx 3 en Qwen, se trunca con aviso).
+  5. Contact sheet obligatorio para detectar drift antes de ensamblar; si una escena cambia color/ropa, regenera solo esa con `--solo escena-XX --overwrite`.
+- **Estilo ad-hoc (sin catálogo):** solo para videos puntuales. Pasa refs con `--referencia`
+  (repetible o comas, pueden estar fuera del proyecto):
 
   ```bash
   python scripts/generar_imagenes.py --guion <sesión>/guion.json \
@@ -257,20 +278,13 @@ python scripts/generar_imagenes.py --guion <sesión>/guion.json --proveedor qwen
     --referencia "/Users/yo/Desktop/referencia_2.png" --overwrite
   ```
 
-  También pueden ir en `parametros.imagen_referencia` del guion (string o lista). Las imágenes se
-  **envían reales (base64) junto con el prompt en cada llamada API** — el anclaje visual directo
-  es el mecanismo principal de consistencia; no se sustituyen por descripciones textuales.
-- **Seed para consistencia (Qwen):** `qwen-image-2.0/3.0` soporta `parameters.seed` (0–2147483647).
-  El script usa **una misma seed para todas las escenas del video**: `--seed 12345`, o `IMAGEN_SEED`
-  en `.env`, o (default) **auto-derivada del título del guion** (crc32) — así la misma idea siempre
-  usa la misma seed y otra idea usa otra. La seed estabiliza estilo/paleta; la consistencia del
-  **personaje** depende además de repetir la misma "ficha de personaje" literal en cada prompt
-  (lo hace la Fase 1) y de las imágenes de referencia. La seed queda registrada en
-  `<sesión>/imagenes/reporte.json`. Gemini no soporta seed (se ignora con un aviso).
-- **prompt_extend:** por defecto **False** (`QWEN_PROMPT_EXTEND=false` en `.env` o `--prompt-extend`
-  para activarlo). La reescritura automática del prompt por parte del modelo añade varianza entre
-  escenas; desactivada, respeta tu prompt literal → más consistencia.
-- **Referencia con personaje (crítico):** cuando hay `imagen_referencia` (ej. Tom gato), el script añade automáticamente a cada prompt `Replicate the exact character and art style from the reference image(s). Keep the main character identical...` **pero solo funciona si la ficha `CHARACTER:` del guion describe al mismo personaje de la referencia** (ej. `CHARACTER: Tom, a gray and white anthropomorphic cat...`). Si la ficha dice `Alex humano` y la referencia es un gato, el modelo priorizará el texto y la referencia se ignorará — fue lo ocurrido en `us-debt-40-trillion`. La Fase 1 debe derivar la ficha de la referencia.
+- **Seed para consistencia (Qwen):** misma seed por video: `--seed 12345`, o `IMAGEN_SEED`, o
+  auto-derivada del título (crc32). Estabiliza paleta; el personaje lo fijan las fichas + refs.
+  Queda en `<sesión>/imagenes/reporte.json`. Gemini ignora seed con aviso.
+- **prompt_extend:** default **False** (`QWEN_PROMPT_EXTEND=false`). Activarlo añade varianza → más drift.
+- **Referencia con personaje (crítico):** el script añade `Replicate the exact character...` **pero solo
+  funciona si `CHARACTER:` describe al mismo personaje de la referencia**. Si la ficha dice humano y la
+  ref es gato, el texto gana y la ref se ignora.
 - **Nombrado:** `MM_SS_<slug>.png`. Si una imagen falla, el script deja el detalle en
   `<sesión>/imagenes/reporte.json`.
 

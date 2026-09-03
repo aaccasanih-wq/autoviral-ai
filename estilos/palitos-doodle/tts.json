@@ -1,0 +1,12 @@
+{
+  "motor": "gcp",
+  "voz_en": "en-US-Neural2-D",
+  "voz_es": "es-ES-Neural2-D",
+  "edge_fallback_en": "en-US-GuyNeural",
+  "edge_fallback_es": "es-MX-JorgeNeural",
+  "rate": "+5%",
+  "pitch": "0",
+  "estilo_narracion": "Narrador ingenioso estilo pizarra 80s B&W: seco, directo, irónico, ritmo ágil, sin dramatismo excesivo. Ideal para explicar dinero a gente común.",
+  "expresividad": "media, deadpan con chispa en el hook, claro en la matemática",
+  "notas": "Default gcp. Fallback edge con mismo rate (pitch +0Hz para edge)."
+}

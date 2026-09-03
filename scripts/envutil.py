@@ -99,17 +99,20 @@ def edge_tts_voz_por_defecto() -> str:
 
 
 # --- TTS modular: selección de motor y Google Cloud TTS ---
+# Default del proyecto: ``gcp`` (Google Cloud TTS). ``edge`` es solo fallback
+# si no hay API key o el usuario lo pide explícitamente en ideación.
 
 def tts_motor_por_defecto() -> str:
     """Motor TTS activo: ``edge`` o ``gcp``.
 
-    Prioridad: ``TTS_MOTOR`` del ``.env``; si no, automático — ``gcp`` si existe
-    ``GCP_TTS_API_KEY`` (el usuario ya configuró Google Cloud TTS), si no ``edge``.
+    Prioridad: ``TTS_MOTOR`` del ``.env``; si no está definido, default ``gcp``.
+    Si ``gcp`` no tiene API key, los scripts hacen fallback a ``edge`` con aviso
+    (ver ``generar_audio.py``), para no romper instalaciones sin billing.
     """
     val = (env_o("TTS_MOTOR", "") or "").strip().lower()
     if val in ("edge", "gcp"):
         return val
-    return "gcp" if gcp_tts_apikey() else "edge"
+    return "gcp"
 
 
 def gcp_tts_apikey() -> str | None:

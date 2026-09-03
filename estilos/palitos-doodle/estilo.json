@@ -1,0 +1,17 @@
+{
+  "id": "palitos-doodle",
+  "nombre": "Palitos doodle Flofy",
+  "descripcion": "Dibujos en palitos estilo Flofy: trazo negro desordenado, colores planos brillantes, fondo blanco limpio. Protagonista fijo con polo amarillo. Para explainers directos y divertidos.",
+  "character_ficha": "CHARACTER: Protagonist Stick, a simple hand-drawn stick figure with a large oval bald head, two dot eyes, thin stick arms and legs with NO shoes, NO hat, NO glasses, NO pants, NO extra clothes, ALWAYS wearing a solid bright yellow t-shirt (#FFD93D) with no patterns, no text, no logos. Messy black outline, minimalist doodle style. All secondary stick figures (if any) must have a DIFFERENT fixed t-shirt color declared in the scene (e.g. purple #A06BC5, green #7BC67B, orange #E8833A, blue #5AA9E6) and NEVER yellow, to avoid confusion with the protagonist.",
+  "style_ficha": "STYLE: flat 2D hand-drawn doodle illustration, messy black outline, bright flat solid colors, minimal shading, no gradients, no photorealism, no 3D, clean pure white background (#FFFFFF), playful expressive faces, simple stick-figure design, vertical 9:16 composition.",
+  "fondo": "#FFFFFF blanco puro, sin sombras ni texturas",
+  "paleta": ["#FFFFFF fondo", "#000000 trazo", "#FFD93D protagonista amarillo", "#A06BC5 morado", "#7BC67B verde", "#E8833A naranja", "#5AA9E6 azul"],
+  "trazo": "messy black outline, trazo a mano alzada, grosor irregular",
+  "anti_drift": "Keep the SAME protagonist identical in EVERY scene: bald oval head, dot eyes, stick limbs, solid bright yellow t-shirt, NO shoes, NO hat, NO glasses, NO color change. Do NOT dress the protagonist in purple, green, orange or blue. Do NOT add footwear, hats or accessories. Do NOT switch to photorealistic, 3D or shaded style. Keep pure white background. Secondary characters must keep their declared color for the whole video.",
+  "negativos": ["photorealistic", "3D", "cambiar color de polo del protagonista", "zapatillas", "gorra", "gafas", "sombras realistas", "degradados", "fondo gris o con textura"],
+  "personajes_secundarios": "Opcional, máximo 2 por escena. Cada secundario con color fijo declarado (ej. Secondary Stick in solid purple t-shirt). Nunca usan amarillo. Sin zapatos ni accesorios.",
+  "referencias": ["estilos/palitos-doodle/referencias/referencia_flofy.jpg"],
+  "prompt_template": "{character_ficha} {style_ficha} {accion}. {anti_drift}",
+  "seed_policy": "misma seed por video (auto-derivada del título), prompt_extend=false, enviar referencia en cada llamada",
+  "version": 1
+}

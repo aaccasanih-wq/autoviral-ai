@@ -7,10 +7,11 @@
     "formato": "vertical",
     "idioma": "es",
     "nicho": "finanzas",
+    "estilo_id": "palitos-doodle",
     "estilo_visual": "cinemático natural, luz suave de mañana",
     "publico": "adultos 25-40, usuarios de redes sociales",
     "imagen_referencia": [],
-    "tts": {"motor": "edge", "voz": "es-ES-ElviraNeural", "rate": "-5%", "pitch": "0"},
+    "tts": {"motor": "gcp", "voz": "es-ES-Neural2-F", "rate": "+3%", "pitch": "+2"},
     "subtitulos": {"enabled": true, "color": "amarillo", "font": "Arial Black", "fontSize": 72, "hookFontSize": 80, "outline": 5, "hook": null, "hookColor": "rojo", "hookDuration": 3.0}
   },
   "escenas": [
