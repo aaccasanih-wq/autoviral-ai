@@ -98,7 +98,7 @@ Antes de redactar, confirma y deja constancia de:
 | Público objetivo | `parametros.publico` | p. ej. `adultos 25-40` |
 | Imagen de referencia | `parametros.imagen_referencia` | rutas del estilo (`estilos/<id>/referencias/...`) o ad-hoc |
 | Motor TTS | `parametros.tts.motor` | `gcp` (default del proyecto) \| `edge` (fallback). **Pregunta siempre**: “Uso `gcp` por defecto, ¿confirmas o cambias a `edge`?” |
-| Tono de voz | `parametros.tts` | objeto: `{"motor": "gcp", "voz": "...", "rate": "+3%", "pitch": "+2"}`. Si hay `estilo_id`, usa su `tts.json` (voz_en/voz_es + rate/pitch); si no, según emoción |
+| Tono de voz | `parametros.tts` | objeto: `{"motor": "gcp", "voz": "...", "rate": "+3%", "pitch": "+2"}`. Prioridad: especificación explícita del usuario > decisión del agente (si hay `estilo_id`, parte de su `tts.json` voz_en/voz_es + rate/pitch y ajusta según emoción del guion; si no, según emoción). Por defecto el agente decide voz/rate/pitch sin preguntar cada detalle; solo obedece voz específica si el usuario la pide explícitamente |
 
 > **Motor TTS default `gcp`:** el proyecto usa Google Cloud TTS por defecto (mejor calidad).
 > `edge` solo si no hay `GCP_TTS_API_KEY` o el usuario lo pide. Pregunta explícita obligatoria en
