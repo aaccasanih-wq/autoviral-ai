@@ -120,11 +120,12 @@ Genera un guion con **escenas** numeradas. Cada escena debe tener:
 - `inicio_segundos` / `fin_segundos`: rango estimado dentro de la duración total.
 - `notas` (opcional): dirección, transición o emoción.
 - `efectos` (opcional, recomendado como decisión creativa): objeto con el movimiento/transición
-  de la escena — `{"movimiento": "zoom_in|zoom_out|pan_left|pan_right|kenburns|static",
-  "intensidad": 1.15, "transicion": "none|fade|dissolve|wipeleft|slideup|circleopen",
-  "transicion_duracion": 0.4, "grade": "none|warm|cool"}`. Propón efectos que refuerzan la
-  narración (ej. `zoom_in` lento en la revelación clave, `pan_left` en transiciones de lugar,
-  `grade: cool` para misterio, `warm` para finales inspiradores). Si omites el campo, se aplica el
+  de la escena — `{"movimiento": "zoom_in|zoom_out|pan_left|pan_right|kenburns|static|pop|slide_up|slide_down|shake|punch_in|whip",
+  "intensidad": 1.15, "transicion": "none|fade|dissolve|wipeleft|slideup|slideleft|slideright|slidedown|circleopen|fadeblack|fadewhite|smoothleft|smoothright|smoothup|smoothdown|circleclose|radial|distance|pixelize|hblur|coverleft|revealright|zoomin",
+  "transicion_duracion": 0.4, "grade": "none|warm|cool|vivid|cinematic|noir|vintage"}`. Propón efectos que refuerzan la
+  narración (ej. `zoom_in` lento en la revelación clave, `punch_in` + `fadewhite` en el hook/dato impacto,
+  `pan_left` en transiciones de lugar, `grade: cool` para misterio, `warm`/`vivid` para finales inspiradores,
+  `cinematic` para historias). Si omites el campo, se aplica el
   preset `suave` de la Fase 2 (Ken Burns + crossfade), así que no hace falta definirlo en todas.
 
 Reglas de redacción:

@@ -348,13 +348,13 @@ del guion — **el audio nunca se desincroniza**. Formato: `vertical` → 1080x1
 
 | Tipo | Valores |
 |---|---|
-| Movimiento por escena (`zoompan`) | `static`, `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `kenburns`, `pop` (rebote), `slide_up` (entra desde abajo), `slide_down`, `shake` |
-| Transición de salida (`xfade`) | `none` (corte seco), `fade`, `dissolve`, `wipeleft`, `slideup`, `slideleft`, `slideright`, `slidedown`, `circleopen` |
-| Grading | `none`, `warm`, `cool` |
+| Movimiento por escena (`zoompan`) | `static`, `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `kenburns`, `pop` (rebote), `slide_up` (entra desde abajo), `slide_down`, `shake`, `punch_in` (zoom rápido de impacto para hooks/datos), `whip` (latigazo lateral) |
+| Transición de salida (`xfade`) | `none` (corte seco), `fade`, `dissolve`, `wipeleft`, `slideup`, `slideleft`, `slideright`, `slidedown`, `circleopen`, `fadeblack`, `fadewhite` (flash), `smoothleft`, `smoothright`, `smoothup`, `smoothdown`, `circleclose`, `radial`, `distance`, `pixelize`, `hblur`, `coverleft`, `revealright`, `zoomin` |
+| Grading | `none`, `warm`, `cool`, `vivid` (punch de color), `cinematic` (viñeta + grano), `noir`, `vintage` |
 | Overlay intra-escena (nuevo) | `slideup` (sube desde abajo, como Tom en tus capturas), `slidedown`, `fade`, `pop`, `wipeup` — se declara en `efectos.overlays: [{"src":"path.png","entrada":"slideup","salida":"slidedown","inicio":0.5,"duracion":2.0,"escala":0.55}]` |
 | Presets (`--preset`) | `suave` (default: Ken Burns lento 1.12x + fade 0.4s) · `dinamico` (movimientos 1.22x + transiciones variadas) · `off` (imagen fija, como la v1) |
 
-**Cómo decide el agente los efectos (no son fijos):** Fase 1 (Director Creativo IA) analiza idea + narración + imagen y escribe `efectos` por escena según guía: `zoom_in` lento para revelación clave, `pan_left` cambio de lugar, `pop` para dato que impacta, `slide_up` overlay para personaje que entra desde abajo (tu ejemplo 45K$ y REAL ESTATE VS STOCKS), `grade warm` solo para cierre inspirador, `grade none` por defecto para no desteñir. Si `efectos` está vacío, cae a preset. Puedes pedir "más pop en escena 3" o adjuntar captura y el agente traduce a `overlays`.
+**Cómo decide el agente los efectos (no son fijos):** Fase 1 (Director Creativo IA) analiza idea + narración + imagen y escribe `efectos` por escena según guía: `zoom_in` lento para revelación clave, `punch_in` + `fadewhite`/`pixelize` para hook o dato que impacta, `pan_left` cambio de lugar, `pop` para dato que impacta, `smoothup`/`coverleft` para transiciones modernas TikTok, `slide_up` overlay para personaje que entra desde abajo (tu ejemplo 45K$ y REAL ESTATE VS STOCKS), `grade vivid` para energía, `cinematic` para historias, `grade warm` solo para cierre inspirador, `grade none` por defecto para no desteñir. Si `efectos` está vacío, cae a preset. Puedes pedir "más pop en escena 3" o adjuntar captura y el agente traduce a `overlays`.
 
 **Prioridad:** `efectos` de la escena en el guion (escritos por la Fase 1, opcional) > `--preset` >
 comportamiento clásico. Ejemplos:

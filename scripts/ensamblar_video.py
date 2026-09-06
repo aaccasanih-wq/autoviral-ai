@@ -8,10 +8,15 @@ que **el audio nunca se desincroniza** (cada segmento se extiende lo que dura su
 
 Efectos (catálogo — ver ``--list-efectos``):
     * Movimiento por escena: ``static``, ``zoom_in``, ``zoom_out``, ``pan_left``, ``pan_right``,
-      ``kenburns`` (zoom + paneo diagonal).
+      ``kenburns`` (zoom + paneo diagonal), ``pop``, ``slide_up``, ``slide_down``, ``shake``,
+      ``punch_in`` (zoom rápido de impacto para hooks/datos), ``whip`` (latigazo lateral).
     * Transición de salida de cada escena: ``none`` (corte seco), ``fade``, ``dissolve``,
-      ``wipeleft``, ``slideup``, ``circleopen``.
-    * Grading opcional: ``none``, ``warm``, ``cool``.
+      ``wipeleft``, ``slideup``, ``slideleft``, ``slideright``, ``slidedown``, ``circleopen``,
+      ``fadeblack``, ``fadewhite`` (flash), ``smoothleft``, ``smoothright``, ``smoothup``,
+      ``smoothdown``, ``circleclose``, ``radial``, ``distance``, ``pixelize``, ``hblur``,
+      ``coverleft``, ``revealright``, ``zoomin``.
+    * Grading opcional: ``none``, ``warm``, ``cool``, ``vivid``, ``cinematic``, ``noir``,
+      ``vintage``.
     * Fades globales de entrada/salida.
 
 Los efectos se resuelven con prioridad: ``efectos`` de la escena (en ``guion.json``, opcional) >
@@ -44,9 +49,12 @@ DIMS = {"vertical": (1080, 1920), "horizontal": (1920, 1080)}
 
 # --- Catálogo de efectos ---------------------------------------------------
 MOVIMIENTOS = ("static", "zoom_in", "zoom_out", "pan_left", "pan_right", "kenburns",
-               "pop", "slide_up", "slide_down", "shake")
-TRANSICIONES = ("none", "fade", "dissolve", "wipeleft", "slideup", "slideleft", "slideright", "slidedown", "circleopen")
-GRADES = ("none", "warm", "cool")
+               "pop", "slide_up", "slide_down", "shake", "punch_in", "whip")
+TRANSICIONES = ("none", "fade", "dissolve", "wipeleft", "slideup", "slideleft", "slideright",
+                "slidedown", "circleopen", "fadeblack", "fadewhite", "smoothleft", "smoothright",
+                "smoothup", "smoothdown", "circleclose", "radial", "distance", "pixelize",
+                "hblur", "coverleft", "revealright", "zoomin")
+GRADES = ("none", "warm", "cool", "vivid", "cinematic", "noir", "vintage")
 OVERLAY_ENTRADAS = ("slideup", "slidedown", "fade", "pop", "wipeup")
 OVERLAY_SALIDAS = ("slidedown", "slideup", "fade", "pop", "wipedown")
 
@@ -56,6 +64,12 @@ GRADE_FILTROS = {
     # Ahora son más sutiles y con leve boost de saturación para no desteñir.
     "warm": "colorbalance=rm=0.03:gm=0.005:bm=-0.03:rh=0.02:bh=-0.02,eq=saturation=1.04:contrast=1.02",
     "cool": "colorbalance=rm=-0.03:bm=0.03:rh=-0.01:bh=0.02,eq=saturation=1.04:contrast=1.02",
+    # TikTok: punch de color para hooks/datos sin lavar fondos claros.
+    "vivid": "eq=saturation=1.25:contrast=1.08",
+    # TikTok: look cine sutil (viñeta + contraste + grano fino).
+    "cinematic": "vignette=PI/4.5,eq=saturation=1.08:contrast=1.05,noise=alls=6:allf=t",
+    "noir": "hue=s=0,eq=contrast=1.10:brightness=0.02",
+    "vintage": "colorbalance=rm=0.05:gm=0.02:bm=-0.04,eq=saturation=0.85:contrast=1.03",
 }
 
 PRESETS: dict[str, dict | None] = {
@@ -66,10 +80,10 @@ PRESETS: dict[str, dict | None] = {
         "transicion_duracion": 0.4,
         "grade": "none",
     },
-    "dinamico": {  # Movimientos marcados + transiciones variadas — más energía
-        "movimientos": ("zoom_in", "kenburns", "pan_left", "zoom_out", "pan_right"),
+    "dinamico": {  # Movimientos marcados + transiciones variadas — más energía TikTok
+        "movimientos": ("punch_in", "zoom_in", "kenburns", "whip", "pan_left", "zoom_out"),
         "intensidad": 1.22,
-        "transiciones": ("dissolve", "slideup", "wipeleft", "circleopen", "fade"),
+        "transiciones": ("fadewhite", "dissolve", "smoothup", "wipeleft", "pixelize", "circleopen", "fade"),
         "transicion_duracion": 0.35,
         "grade": "none",
     },
@@ -204,6 +218,14 @@ def _zoompan_expr(mov: str, intens: float, frames: int) -> tuple[str, str, str]:
     if mov == "shake":
         z = 1.0 + (intens - 1.0) / 3.0
         return (f"{z:.4f}", "(iw-iw/zoom)/2 + 8*sin(on*0.8)", "(ih-ih/zoom)/2 + 5*cos(on*0.6)")
+    if mov == "punch_in":
+        # Punch TikTok: zoom rápido 1.0->intens en el primer 30% y se mantiene.
+        return (f"if(lt(on,{frames}*0.3),1+({intens}-1)*on/({frames}*0.3),{intens})",
+                "(iw-iw/zoom)/2", "(ih-ih/zoom)/2")
+    if mov == "whip":
+        # Latigazo lateral: paneo rápido en el primer 35% con zoom fijo leve.
+        z = 1.0 + (intens - 1.0) / 2.0
+        return (f"{z:.4f}", f"(iw-iw/zoom)*min(1,on/{frames}*2.857)", "(ih-ih/zoom)/2")
     # kenburns: zoom in + paneo diagonal hacia el centro
     return (f"1+({intens}-1)*on/{frames}",
             f"(iw-iw/zoom)*on/{frames}", f"(ih-ih/zoom)*on/{frames}")
